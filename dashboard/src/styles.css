@@ -32,15 +32,18 @@ body {
 }
 
 .logo-icon {
-  background: #6c3cf7;
-  color: white;
+  color: #6c3cf7;
   width: 52px;
   height: 52px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+  overflow: hidden;
+}
+
+.logo-icon svg {
+  display: block;
 }
 
 .brand-info h1 {
@@ -173,14 +176,17 @@ body {
 
 .icon-blue {
   background: #e8f0ff;
+  color: #2563eb;
 }
 
 .icon-red {
   background: #fdecec;
+  color: #dc2626;
 }
 
 .icon-green {
   background: #e8f8ee;
+  color: #16a34a;
 }
 
 /* Section title */
@@ -190,11 +196,44 @@ body {
   color: #172b4d;
 }
 
+.alerts-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0 0 18px;
+}
+
+.alerts-tab {
+  border: 1px solid #d8ddea;
+  background: #fff;
+  color: #4b5563;
+  border-radius: 999px;
+  padding: 9px 18px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.alerts-tab.is-active {
+  background: #6c3cf7;
+  border-color: #6c3cf7;
+  color: #fff;
+}
+
 /* Alerts grid */
 .cards {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 28px;
+}
+
+.cards-empty {
+  margin: 0;
+  grid-column: 1 / -1;
+  text-align: center;
+  color: #6b7280;
+  font-size: 15px;
 }
 
 .active-call-card {
@@ -203,14 +242,12 @@ body {
   border-radius: 14px;
   padding: 28px 30px 24px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+  display: flex;
+  flex-direction: column;
 }
 
 .acknowledged-dim {
   opacity: 0.68;
-}
-
-.alert-top {
-  margin-bottom: 10px;
 }
 
 .warning-circle {
@@ -226,7 +263,14 @@ body {
 }
 
 .call-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
   margin-bottom: 22px;
+}
+
+.call-heading-main {
+  min-width: 0;
 }
 
 .call-heading h3 {
@@ -248,13 +292,19 @@ body {
 
 .badge-emergency,
 .badge-urgent {
-  background: #fde7d8;
-  color: #c2410c;
+  background: #fee2e2;
+  color: #b91c1c;
 }
 
-.badge-routine {
-  background: #f5e6a8;
+.badge-uncertain {
+  background: #fef3c7;
   color: #a16207;
+}
+
+.badge-non-urgent,
+.badge-routine {
+  background: #dcfce7;
+  color: #166534;
 }
 
 .field-group,
@@ -295,7 +345,7 @@ body {
 }
 
 .btn-ack {
-  margin-top: 8px;
+  margin-top: auto;
   width: 100%;
   height: 44px;
   border: none;
@@ -467,6 +517,80 @@ body {
   margin-bottom: 18px;
 }
 
+.investigate-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 3000;
+}
+
+.investigate-modal {
+  width: min(760px, 100%);
+  max-height: 85vh;
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid #e5eaf4;
+  box-shadow: 0 28px 60px rgba(15, 23, 42, 0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.investigate-modal-header {
+  padding: 18px 22px;
+  border-bottom: 1px solid #eef1f7;
+}
+
+.investigate-modal-header h3 {
+  margin: 0;
+  font-size: 20px;
+  color: #172b4d;
+}
+
+.investigate-modal-body {
+  padding: 18px 22px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.investigate-section {
+  background: #f8faff;
+  border: 1px solid #e2e8f6;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.investigate-section label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #5f6b84;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.investigate-section p {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  color: #1f2a44;
+}
+
+.investigate-modal-actions {
+  border-top: 1px solid #eef1f7;
+  padding: 14px 22px 18px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
 @keyframes slideIn {
   from {
     transform: translateX(50px);
@@ -510,6 +634,10 @@ body {
   .notification-overlay-panel {
     width: min(390px, calc(100vw - 32px));
     right: 0;
+  }
+
+  .investigate-modal-actions {
+    grid-template-columns: 1fr;
   }
 }
 
