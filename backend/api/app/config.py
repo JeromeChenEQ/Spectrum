@@ -41,7 +41,6 @@ class Settings:
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     max_audio_seconds: int = _int_env("MAX_AUDIO_SECONDS", "60")
 
-
 settings = Settings()
 
 

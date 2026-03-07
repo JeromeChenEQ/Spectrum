@@ -1,6 +1,8 @@
 """Alert endpoints for device ingestion and helpdesk operations."""
 
 import asyncio
+import functools
+import inspect
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, Query
@@ -30,7 +32,33 @@ def get_db_session():
         db.close()
 
 
+# Timeout decorator for endpoints: raises HTTP 504 if handler doesn't complete in time
+def timeout_decorator(timeout_seconds: int = 20):
+    def decorator(func):
+        if inspect.iscoroutinefunction(func):
+            @functools.wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                try:
+                    return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout_seconds)
+                except asyncio.TimeoutError:
+                    raise HTTPException(status_code=504, detail="Request timed out")
+
+            return async_wrapper
+
+        @functools.wraps(func)
+        async def sync_wrapper(*args, **kwargs):
+            try:
+                return await asyncio.wait_for(asyncio.to_thread(func, *args, **kwargs), timeout=timeout_seconds)
+            except asyncio.TimeoutError:
+                raise HTTPException(status_code=504, detail="Request timed out")
+
+        return sync_wrapper
+
+    return decorator
+
+
 @alerts_router.post("/from-device", response_model=AlertResponse, status_code=201)
+@timeout_decorator(20)
 async def create_alert_from_device(
     box_id: int = Form(...),
     audio_file: UploadFile = File(...),
@@ -81,7 +109,8 @@ async def create_alert_from_device(
 
 
 @alerts_router.get("", response_model=list[AlertResponse])
-def list_alerts(
+@timeout_decorator(20)
+async def list_alerts(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db_session),
@@ -97,6 +126,7 @@ def list_alerts(
 
 
 @alerts_router.patch("/{alert_id}/acknowledge", response_model=AcknowledgeResponse)
+@timeout_decorator(20)
 async def acknowledge_alert(alert_id: int, db: Session = Depends(get_db_session)):
     """Acknowledge an existing alert."""
     try:
