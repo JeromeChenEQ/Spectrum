@@ -1,0 +1,15 @@
+# Python
+backend/api/.venv/
+backend/api/__pycache__/
+backend/api/.env
+*.pyc
+
+# Node
+dashboard/node_modules/
+dashboard/dist/
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

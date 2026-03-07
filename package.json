@@ -1,0 +1,8 @@
+{
+  "name": "spectrum-tools",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "simulate-device": "node bin/device-simulator.js"
+  }
+}
