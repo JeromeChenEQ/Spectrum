@@ -129,14 +129,11 @@ function App() {
   const userMenuRef = useRef(null);
   const toastTimerRef = useRef(new Set());
 
-<<<<<<< HEAD
-=======
   const updateLocalAlertStatus = (id) => {
     setAlerts((current) => current.map((a) => (a.alert_id === id ? { ...a, status: "acknowledged" } : a)));
     setNotifications((prev) => prev.filter((n) => n.alert_id !== id));
   };
 
->>>>>>> de0d688ed51508c3eb7b72db85e63e07a8b93886
   useEffect(() => {
     let socket;
 
@@ -172,21 +169,6 @@ function App() {
         }
       });
     }
-<<<<<<< HEAD
-  
-    loadData();
-
-    const interval = setInterval(async () => {
-      try {
-        const updatedAlerts = await fetchAlerts();
-        setAlerts(updatedAlerts);
-        setNotifications(updatedAlerts.filter((a) => a.status === "open"));
-      } catch (err) {
-        console.error("Polling error:", err);
-      }
-    }, 3000);
-
-=======
 
     loadData();
 
@@ -200,7 +182,6 @@ function App() {
       }
     }, 3000);
 
->>>>>>> de0d688ed51508c3eb7b72db85e63e07a8b93886
     return () => {
       socket?.close();
       clearInterval(interval);
