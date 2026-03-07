@@ -3,7 +3,8 @@
 import base64
 import json
 import logging
-from typing import Dict
+import re
+from typing import Any, Dict
 
 from openai import OpenAI
 from app.config import settings
@@ -29,11 +30,11 @@ def _get_client() -> OpenAI | None:
         _client = OpenAI(api_key=settings.openai_api_key)
         log.info("OpenAI client instantiated")
         return _client
-    except Exception:
+    except Exception as error:
         # Log full exception but do not expose the key itself.
         masked = settings.openai_api_key[:6] + "..." if settings.openai_api_key else "(empty)"
         log.exception("Failed to instantiate OpenAI client (key=%s)", masked)
-        return None
+        raise RuntimeError(f"Failed to instantiate OpenAI client: {error}") from error
 
 SYSTEM_PROMPT = """
 You process emergency senior-aid audio in one pass.
@@ -44,6 +45,60 @@ Return valid JSON with keys:
 - severity (EMERGENCY, URGENT, or ROUTINE)
 Classify severity carefully for helpdesk triage.
 """.strip()
+
+
+def _detect_audio_format(audio_bytes: bytes, mime_type: str) -> str:
+    """Detect real audio format from bytes, then fall back to MIME type."""
+    if len(audio_bytes) >= 12 and audio_bytes[:4] == b"RIFF" and audio_bytes[8:12] == b"WAVE":
+        return "wav"
+    if audio_bytes.startswith(b"ID3") or (len(audio_bytes) >= 2 and audio_bytes[0] == 0xFF):
+        return "mp3"
+    if audio_bytes.startswith(b"OggS"):
+        return "ogg"
+    if audio_bytes.startswith(b"\x1A\x45\xDF\xA3"):
+        return "webm"
+
+    normalized = (mime_type or "").lower()
+    if "wav" in normalized or "wave" in normalized:
+        return "wav"
+    if "mpeg" in normalized or "mp3" in normalized:
+        return "mp3"
+    if "ogg" in normalized:
+        return "ogg"
+    if "webm" in normalized:
+        return "webm"
+    return ""
+
+
+def _extract_json_text(raw_text: str) -> str:
+    """Extract JSON object from model text output."""
+    if not raw_text:
+        return "{}"
+
+    stripped = raw_text.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        return stripped
+
+    match = re.search(r"\{.*\}", stripped, re.DOTALL)
+    if match:
+        return match.group(0)
+
+    return "{}"
+
+
+def _extract_chat_message_text(content: Any) -> str:
+    """Extract text from chat completion message content."""
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+        text_parts: list[str] = []
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                text_parts.append(str(part.get("text", "")))
+        return "\n".join(text_parts).strip()
+
+    return ""
 
 
 def _simulate_result() -> Dict[str, str | bool]:
@@ -58,39 +113,50 @@ def _simulate_result() -> Dict[str, str | bool]:
 
 def analyze_audio_single_call(audio_bytes: bytes, mime_type: str = "audio/wav") -> Dict[str, str | bool]:
     """Analyze audio with one AI request and return normalized JSON fields."""
-    client = _get_client()
-    if client is None:
+    if not settings.openai_api_key:
         result = _simulate_result()
         result["is_simulated_ai"] = True
         return result
+    client = _get_client()
+
     audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+    audio_format = _detect_audio_format(audio_bytes, mime_type)
+    if audio_format not in {"wav", "mp3", "ogg", "webm"}:
+        raise ValueError(
+            "Unsupported or invalid audio format. Upload a valid WAV, MP3, OGG, or WEBM file."
+        )
 
     try:
         response = client.chat.completions.create(
             model="gpt-4o-audio-preview",
-            response_format={"type": "json_object"},
-            timeout=30,
             messages=[
                 {
                     "role": "system",
-                    "content": [{"type": "text", "text": SYSTEM_PROMPT}],
+                    "content": SYSTEM_PROMPT,
                 },
                 {
                     "role": "user",
                     "content": [
                         {
+                            "type": "text",
+                            "text": (
+                                "Transcribe speech in original language, translate to English, and classify "
+                                "severity as EMERGENCY, URGENT, or ROUTINE. Return JSON only."
+                            ),
+                        },
+                        {
                             "type": "input_audio",
                             "input_audio": {
                                 "data": audio_base64,
-                                "format": "wav",
+                                "format": audio_format,
                             },
-                        }
+                        },
                     ],
-                },
+                }
             ],
         )
-        content = response.choices[0].message.content or "{}"
-        parsed = json.loads(content)
+        message_content = response.choices[0].message.content if response.choices else ""
+        parsed = json.loads(_extract_json_text(_extract_chat_message_text(message_content)))
 
         return {
             "detected_language": parsed.get("detected_language", "Unknown"),
@@ -99,8 +165,6 @@ def analyze_audio_single_call(audio_bytes: bytes, mime_type: str = "audio/wav") 
             "severity": parsed.get("severity", "ROUTINE"),
             "is_simulated_ai": False,
         }
-    except Exception:
-        log.exception("OpenAI audio analysis failed, falling back to simulated result")
-        result = _simulate_result()
-        result["is_simulated_ai"] = True
-        return result
+    except Exception as error:
+        log.exception("OpenAI audio analysis failed")
+        raise RuntimeError(f"OpenAI audio analysis failed: {error}") from error

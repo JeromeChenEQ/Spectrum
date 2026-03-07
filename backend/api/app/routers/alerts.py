@@ -41,18 +41,21 @@ async def create_alert_from_device(
     if box is None:
         raise HTTPException(status_code=404, detail="box_id not found")
 
-    if not audio_file.filename.lower().endswith(".wav"):
-        raise HTTPException(status_code=400, detail="Only WAV uploads are accepted")
-
     audio_bytes = await audio_file.read()
     if not audio_bytes:
         raise HTTPException(status_code=400, detail="audio_file is empty")
     if len(audio_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="Audio file exceeds maximum allowed size")
 
-    ai_result = await asyncio.to_thread(
-        analyze_audio_single_call, audio_bytes, audio_file.content_type or "audio/wav"
-    )
+    try:
+        ai_result = await asyncio.to_thread(
+            analyze_audio_single_call, audio_bytes, audio_file.content_type or "audio/wav"
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+
     severity = str(ai_result.get("severity", "ROUTINE")).upper()
     if severity not in {"EMERGENCY", "URGENT", "ROUTINE"}:
         severity = "ROUTINE"
