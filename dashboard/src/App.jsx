@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { acknowledgeAlert, fetchAlerts } from "./api";
+import { acknowledgeAlert, connectAlertsWebSocket, fetchAlerts } from "./api";
 import "./styles.css";
 
 const classificationPriority = {
@@ -56,6 +56,16 @@ function getCompletedActionLabel(alert) {
   return getAlertClassification(alert) === "URGENT"
     ? "Dispatched"
     : "Acknowledged";
+}
+
+function getAlertDialect(alert) {
+  return (
+    alert.dialect ??
+    alert.language ??
+    alert.detected_language ??
+    alert.lang ??
+    "Unknown"
+  );
 }
 
 function PhoneIcon() {
@@ -142,42 +152,78 @@ function SignOutIcon() {
 function App() {
   const [alerts, setAlerts] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [incomingCallNotices, setIncomingCallNotices] = useState([]);
+  const [actionToasts, setActionToasts] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const [selectedTab, setSelectedTab] = useState("active");
   const [investigationAlert, setInvestigationAlert] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  
 
   const notificationRef = useRef(null);
+  const userMenuRef = useRef(null);
+  const toastTimerRef = useRef(new Set());
 
-useEffect(() => {
-  async function loadData() {
-    try {
-      const initialAlerts = await fetchAlerts();
-      setAlerts(initialAlerts);
-      setNotifications(initialAlerts.filter((a) => a.status === "open"));
-    } catch (loadError) {
-      setError(loadError.message);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    let socket;
+
+    async function loadData() {
+      try {
+        const initialAlerts = await fetchAlerts();
+        setAlerts(initialAlerts);
+
+        // Optional: preload open alerts into the notification panel
+        setNotifications(initialAlerts.filter((a) => a.status === "open"));
+      } catch (loadError) {
+        setError(loadError.message);
+      } finally {
+        setLoading(false);
+      }
+
+      socket = connectAlertsWebSocket((event) => {
+        if (event.type === "alert_created") {
+          const alert = event.payload;
+          setAlerts((current) => [alert, ...current]);
+          setNotifications((prev) => [alert, ...prev]);
+          setIncomingCallNotices((current) => [
+            {
+              id: `${alert.alert_id}-${Date.now()}-${Math.random()}`,
+              alertId: alert.alert_id,
+              message:
+                alert.english_translation ||
+                alert.transcript ||
+                "A new call was received.",
+              createdAt: alert.created_at
+            },
+            ...current
+          ]);
+        }
+
+        if (event.type === "alert_acknowledged") {
+          updateLocalAlertStatus(event.payload.alert_id);
+        }
+      });
     }
-  }
+  
+    loadData();
 
-  loadData();
+    const interval = setInterval(async () => {
+      try {
+        const updatedAlerts = await fetchAlerts();
+        setAlerts(updatedAlerts);
+        setNotifications(updatedAlerts.filter((a) => a.status === "open"));
+      } catch (err) {
+        console.error("Polling error:", err);
+      }
+    }, 3000);
 
-  // Poll every 5 seconds
-  const interval = setInterval(async () => {
-    try {
-      const updatedAlerts = await fetchAlerts();
-      setAlerts(updatedAlerts);
-      setNotifications(updatedAlerts.filter((a) => a.status === "open"));
-    } catch (err) {
-      console.error("Polling error:", err);
-    }
-  }, 3000);
-
-  return () => clearInterval(interval);
-}, []);
+    return () => {
+      socket?.close();
+      clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -187,10 +233,23 @@ useEffect(() => {
       ) {
         setShowNotifications(false);
       }
+      if (
+        userMenuRef.current &&
+        !userMenuRef.current.contains(event.target)
+      ) {
+        setShowUserMenu(false);
+      }
     }
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      toastTimerRef.current.forEach((timerId) => window.clearTimeout(timerId));
+      toastTimerRef.current.clear();
+    };
   }, []);
 
   const updateLocalAlertStatus = (id) => {
@@ -202,10 +261,29 @@ useEffect(() => {
     setNotifications((prev) => prev.filter((n) => n.alert_id !== id));
   };
 
-  async function handleAcknowledge(alertId) {
+  function acknowledgeIncomingNotice(noticeId) {
+    setIncomingCallNotices((current) =>
+      current.filter((notice) => notice.id !== noticeId)
+    );
+  }
+
+  function showActionSuccessToast(message) {
+    const toastId = `${Date.now()}-${Math.random()}`;
+    setActionToasts((current) => [...current, { id: toastId, message }]);
+    const timerId = window.setTimeout(() => {
+      setActionToasts((current) =>
+        current.filter((toast) => toast.id !== toastId)
+      );
+      toastTimerRef.current.delete(timerId);
+    }, 5000);
+    toastTimerRef.current.add(timerId);
+  }
+
+  async function handleAcknowledge(alertId, successMessage = "Action successful.") {
     try {
       await acknowledgeAlert(alertId);
       updateLocalAlertStatus(alertId);
+      showActionSuccessToast(successMessage);
       return true;
     } catch (ackError) {
       window.alert(ackError.message);
@@ -219,7 +297,10 @@ useEffect(() => {
 
   async function handleInvestigateDecision() {
     if (!investigationAlert) return;
-    const success = await handleAcknowledge(investigationAlert.alert_id);
+    const success = await handleAcknowledge(
+      investigationAlert.alert_id,
+      `Alert ${investigationAlert.alert_id} acknowledged successfully.`
+    );
     if (success) {
       closeInvestigateModal();
     }
@@ -246,7 +327,10 @@ useEffect(() => {
   async function handleInvestigateDispatch() {
     if (!investigationAlert) return;
     promoteAlertToUrgent(investigationAlert.alert_id);
-    const success = await handleAcknowledge(investigationAlert.alert_id);
+    const success = await handleAcknowledge(
+      investigationAlert.alert_id,
+      `Dispatch help successful for alert ${investigationAlert.alert_id}.`
+    );
     if (success) {
       closeInvestigateModal();
     }
@@ -257,11 +341,16 @@ useEffect(() => {
   }
 
   function handlePrimaryAction(alert) {
-    if (getAlertClassification(alert) === "UNCERTAIN") {
+    const classification = getAlertClassification(alert);
+    if (classification === "UNCERTAIN") {
       setInvestigationAlert(alert);
       return;
     }
-    handleAcknowledge(alert.alert_id);
+    const successMessage =
+      classification === "URGENT"
+        ? `Dispatch help successful for alert ${alert.alert_id}.`
+        : `Alert ${alert.alert_id} acknowledged successfully.`;
+    handleAcknowledge(alert.alert_id, successMessage);
   }
 
   const sortedAlerts = useMemo(() => {
@@ -274,10 +363,22 @@ useEffect(() => {
     });
   }, [alerts]);
 
-  const totalActive = alerts.filter((a) => a.status === "open").length;
+  // const totalActive = alerts.filter((a) => a.status === "open").length;
+  // const urgentCount = alerts.filter(
+  //   (a) => a.status === "open" && getAlertClassification(a) === "URGENT"
+  // ).length;
+  const activeCount = alerts.filter((a) => a.status === "open").length;
   const urgentCount = alerts.filter(
-    (a) => a.status === "open" && getAlertClassification(a) === "URGENT"
-  ).length;
+  (a) => a.status === "open" && getAlertClassification(a) === "URGENT"
+).length;
+
+const uncertainCount = alerts.filter(
+  (a) => a.status === "open" && getAlertClassification(a) === "UNCERTAIN"
+).length;
+
+const nonUrgentCount = alerts.filter(
+  (a) => a.status === "open" && getAlertClassification(a) === "NON-URGENT"
+).length;
   const helpDispatched = alerts.filter(
     (a) => a.status === "acknowledged"
   ).length;
@@ -295,8 +396,7 @@ useEffect(() => {
             <PhoneIcon />
           </div>
           <div className="brand-info">
-            <h1>Helpline Dashboard</h1>
-            <p className="operator-tag">Operator: x</p>
+            <h1>Personal Alert Button Dashboard</h1>
           </div>
         </div>
 
@@ -366,48 +466,98 @@ useEffect(() => {
   )}
 </div>
 
-          <button className="sign-out-btn">
-            <span className="signout-inner">
-              Sign Out
-              <span className="signout-icon">
-                <SignOutIcon />
+          <div className="user-menu" ref={userMenuRef}>
+            <button
+              className="user-menu-btn"
+              onClick={() => setShowUserMenu((prev) => !prev)}
+            >
+              <span className="signout-inner">
+                User
+                <span className="signout-icon">
+                  <SignOutIcon />
+                </span>
               </span>
-            </span>
-          </button>
+            </button>
+            {showUserMenu && (
+              <div className="user-menu-dropdown">
+                <button
+                  className="user-menu-item"
+                  onClick={() => setShowUserMenu(false)}
+                >
+                  Log Out
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </nav>
 
+      {incomingCallNotices.length > 0 && (
+        <div className="notification-stack" aria-live="assertive">
+          {incomingCallNotices.map((notice) => (
+            <div key={notice.id} className="notif-card">
+              <div className="notif-content">
+                <strong>New Call: {notice.alertId}</strong>
+                <p>
+                  {notice.message}
+                  {notice.createdAt
+                    ? ` (${new Date(notice.createdAt).toLocaleTimeString()})`
+                    : ""}
+                </p>
+              </div>
+              <button
+                className="notif-ack-btn"
+                onClick={() => acknowledgeIncomingNotice(notice.id)}
+              >
+                Acknowledge
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {actionToasts.length > 0 && (
+        <div className="action-toast-stack" aria-live="polite" aria-atomic="true">
+          {actionToasts.map((toast) => (
+            <div key={toast.id} className="action-toast">
+              <strong>Success</strong>
+              <p>{toast.message}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
       <section className="stats-row">
-        <div className="stat-card">
-          <div className="stat-info">
-            <label>Total Active Calls</label>
-            <span className="stat-value">{totalActive}</span>
-          </div>
-          <div className="stat-icon icon-blue">
-            <PhoneIcon />
-          </div>
-        </div>
+  <div className="stat-card">
+    <div className="stat-info">
+      <label>Urgent Calls</label>
+      <span className="stat-value text-red">{urgentCount}</span>
+    </div>
+    <div className="stat-icon icon-red">
+      <PhoneIcon />
+    </div>
+  </div>
 
-        <div className="stat-card">
-          <div className="stat-info">
-            <label>Urgent Calls</label>
-            <span className="stat-value text-red">{urgentCount}</span>
-          </div>
-          <div className="stat-icon icon-red">
-            <PhoneIcon />
-          </div>
-        </div>
+  <div className="stat-card">
+    <div className="stat-info">
+      <label>Uncertain Calls</label>
+      <span className="stat-value text-yellow">{uncertainCount}</span>
+    </div>
+    <div className="stat-icon icon-yellow">
+      <PhoneIcon />
+    </div>
+  </div>
 
-        <div className="stat-card">
-          <div className="stat-info">
-            <label>Help Dispatched</label>
-            <span className="stat-value text-green">{helpDispatched}</span>
-          </div>
-          <div className="stat-icon icon-green">
-            <PhoneIcon />
-          </div>
-        </div>
-      </section>
+  <div className="stat-card">
+    <div className="stat-info">
+      <label>Non-Urgent Calls</label>
+      <span className="stat-value text-green">{nonUrgentCount}</span>
+    </div>
+    <div className="stat-icon icon-green">
+      <PhoneIcon />
+    </div>
+  </div>
+</section>
 
       <div className="alerts-tabs" role="tablist" aria-label="Alert categories">
         <button
@@ -417,7 +567,7 @@ useEffect(() => {
           className={`alerts-tab ${selectedTab === "active" ? "is-active" : ""}`}
           onClick={() => setSelectedTab("active")}
         >
-          Active Calls
+          Active Calls <span className="tab-badge">{activeCount}</span>
         </button>
         <button
           type="button"
@@ -458,11 +608,6 @@ useEffect(() => {
               </div>
             </div>
 
-            <div className="field-group">
-              <label>Resident</label>
-              <p className="field-value">Resident Name (ID: {alert.box_id})</p>
-            </div>
-
             <div className="summary-box">
               <label>Call Summary</label>
               <p>
@@ -470,6 +615,16 @@ useEffect(() => {
                   alert.transcript ||
                   "No translation available."}
               </p>
+            </div>
+
+            <div className="detail-block">
+              <label>Dialect</label>
+              <p>{getAlertDialect(alert)}</p>
+            </div>
+
+            <div className="field-group">
+              <label>Resident</label>
+              <p className="field-value">Resident Name (ID: {alert.box_id})</p>
             </div>
 
             <div className="detail-block">
