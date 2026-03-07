@@ -598,7 +598,7 @@ function App() {
             className={`active-call-card ${alert.status === "acknowledged" ? "acknowledged-dim" : ""}`}
           >
             <div className="call-heading">
-              <div className="warning-circle">?</div>
+              <div className="warning-circle">⚠</div>
               <div className="call-heading-main">
                 <h3>Call ID: {alert.alert_id}</h3>
                 <span className={`badge-pill badge-${getAlertClassification(alert).toLowerCase()}`}>
