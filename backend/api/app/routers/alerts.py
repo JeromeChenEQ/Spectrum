@@ -1,7 +1,7 @@
 """Alert endpoints for device ingestion and helpdesk operations."""
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.exc import SQLAlchemyError
