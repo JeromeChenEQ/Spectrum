@@ -39,3 +39,4 @@ Senior emergency alert system built with:
 ## Database Note
 Use Supabase PostgreSQL transaction pooler URL for `SUPABASE_DB_URL`.
 If your URL includes `[YOUR-PASSWORD]`, set `SUPABASE_DB_PASSWORD` and the backend will inject it safely.
+

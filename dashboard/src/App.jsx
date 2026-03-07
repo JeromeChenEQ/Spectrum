@@ -16,11 +16,7 @@ function normalizeClassification(rawValue) {
     .replace(/_/g, "-")
     .replace(/\s+/g, "-");
 
-  if (
-    normalized === "URGENT" ||
-    normalized === "UNCERTAIN" ||
-    normalized === "NON-URGENT"
-  ) {
+  if (["URGENT", "UNCERTAIN", "NON-URGENT"].includes(normalized)) {
     return normalized;
   }
 
@@ -28,11 +24,7 @@ function normalizeClassification(rawValue) {
     return "URGENT";
   }
 
-  if (
-    normalized === "ROUTINE" ||
-    normalized === "LOW" ||
-    normalized === "NONURGENT"
-  ) {
+  if (normalized === "ROUTINE" || normalized === "LOW" || normalized === "NONURGENT") {
     return "NON-URGENT";
   }
 
@@ -53,9 +45,11 @@ function getPrimaryActionLabel(alert) {
 }
 
 function getCompletedActionLabel(alert) {
-  return getAlertClassification(alert) === "URGENT"
-    ? "Dispatched"
-    : "Acknowledged";
+  return getAlertClassification(alert) === "URGENT" ? "Dispatched" : "Acknowledged";
+}
+
+function getAlertDialect(alert) {
+  return alert.dialect ?? alert.language ?? alert.detected_language ?? alert.lang ?? "Unknown";
 }
 
 function PhoneIcon() {
@@ -91,27 +85,7 @@ function BellIcon() {
         strokeWidth="1.7"
         strokeLinecap="round"
       />
-      <path
-        d="M12 3.8v1.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
-      <path
-        d="M4.6 11.1a5.6 5.6 0 0 1 1.2-3.3"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
-      <path
-        d="M19.4 11.1a5.6 5.6 0 0 0-1.2-3.3"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
+      <path d="M12 3.8v1.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
     </svg>
   );
 }
@@ -142,13 +116,23 @@ function SignOutIcon() {
 function App() {
   const [alerts, setAlerts] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [incomingCallNotices, setIncomingCallNotices] = useState([]);
+  const [actionToasts, setActionToasts] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const [selectedTab, setSelectedTab] = useState("active");
   const [investigationAlert, setInvestigationAlert] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const notificationRef = useRef(null);
+  const userMenuRef = useRef(null);
+  const toastTimerRef = useRef(new Set());
+
+  const updateLocalAlertStatus = (id) => {
+    setAlerts((current) => current.map((a) => (a.alert_id === id ? { ...a, status: "acknowledged" } : a)));
+    setNotifications((prev) => prev.filter((n) => n.alert_id !== id));
+  };
 
   useEffect(() => {
     let socket;
@@ -157,8 +141,6 @@ function App() {
       try {
         const initialAlerts = await fetchAlerts();
         setAlerts(initialAlerts);
-
-        // Optional: preload open alerts into the notification panel
         setNotifications(initialAlerts.filter((a) => a.status === "open"));
       } catch (loadError) {
         setError(loadError.message);
@@ -168,8 +150,18 @@ function App() {
 
       socket = connectAlertsWebSocket((event) => {
         if (event.type === "alert_created") {
-          setAlerts((current) => [event.payload, ...current]);
-          setNotifications((prev) => [event.payload, ...prev]);
+          const alert = event.payload;
+          setAlerts((current) => [alert, ...current]);
+          setNotifications((prev) => [alert, ...prev]);
+          setIncomingCallNotices((current) => [
+            {
+              id: `${alert.alert_id}-${Date.now()}-${Math.random()}`,
+              alertId: alert.alert_id,
+              message: alert.english_translation || alert.transcript || "A new call was received.",
+              createdAt: alert.created_at
+            },
+            ...current
+          ]);
         }
 
         if (event.type === "alert_acknowledged") {
@@ -179,16 +171,30 @@ function App() {
     }
 
     loadData();
-    return () => socket?.close();
+
+    const interval = setInterval(async () => {
+      try {
+        const updatedAlerts = await fetchAlerts();
+        setAlerts(updatedAlerts);
+        setNotifications(updatedAlerts.filter((a) => a.status === "open"));
+      } catch {
+        // Polling failures should not crash UI.
+      }
+    }, 3000);
+
+    return () => {
+      socket?.close();
+      clearInterval(interval);
+    };
   }, []);
 
   useEffect(() => {
     function handleClickOutside(event) {
-      if (
-        notificationRef.current &&
-        !notificationRef.current.contains(event.target)
-      ) {
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
         setShowNotifications(false);
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setShowUserMenu(false);
       }
     }
 
@@ -196,19 +202,32 @@ function App() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const updateLocalAlertStatus = (id) => {
-    setAlerts((current) =>
-      current.map((a) =>
-        a.alert_id === id ? { ...a, status: "acknowledged" } : a
-      )
-    );
-    setNotifications((prev) => prev.filter((n) => n.alert_id !== id));
-  };
+  useEffect(() => {
+    return () => {
+      toastTimerRef.current.forEach((timerId) => window.clearTimeout(timerId));
+      toastTimerRef.current.clear();
+    };
+  }, []);
 
-  async function handleAcknowledge(alertId) {
+  function acknowledgeIncomingNotice(noticeId) {
+    setIncomingCallNotices((current) => current.filter((notice) => notice.id !== noticeId));
+  }
+
+  function showActionSuccessToast(message) {
+    const toastId = `${Date.now()}-${Math.random()}`;
+    setActionToasts((current) => [...current, { id: toastId, message }]);
+    const timerId = window.setTimeout(() => {
+      setActionToasts((current) => current.filter((toast) => toast.id !== toastId));
+      toastTimerRef.current.delete(timerId);
+    }, 5000);
+    toastTimerRef.current.add(timerId);
+  }
+
+  async function handleAcknowledge(alertId, successMessage = "Action successful.") {
     try {
       await acknowledgeAlert(alertId);
       updateLocalAlertStatus(alertId);
+      showActionSuccessToast(successMessage);
       return true;
     } catch (ackError) {
       window.alert(ackError.message);
@@ -222,37 +241,31 @@ function App() {
 
   async function handleInvestigateDecision() {
     if (!investigationAlert) return;
-    const success = await handleAcknowledge(investigationAlert.alert_id);
-    if (success) {
-      closeInvestigateModal();
-    }
+    const success = await handleAcknowledge(
+      investigationAlert.alert_id,
+      `Alert ${investigationAlert.alert_id} acknowledged successfully.`
+    );
+    if (success) closeInvestigateModal();
   }
 
   function promoteAlertToUrgent(alertId) {
-    setAlerts((current) =>
-      current.map((a) =>
-        a.alert_id === alertId ? { ...a, final_classification: "URGENT" } : a
-      )
-    );
+    setAlerts((current) => current.map((a) => (a.alert_id === alertId ? { ...a, final_classification: "URGENT" } : a)));
     setNotifications((current) =>
-      current.map((n) =>
-        n.alert_id === alertId ? { ...n, final_classification: "URGENT" } : n
-      )
+      current.map((n) => (n.alert_id === alertId ? { ...n, final_classification: "URGENT" } : n))
     );
     setInvestigationAlert((current) =>
-      current && current.alert_id === alertId
-        ? { ...current, final_classification: "URGENT" }
-        : current
+      current && current.alert_id === alertId ? { ...current, final_classification: "URGENT" } : current
     );
   }
 
   async function handleInvestigateDispatch() {
     if (!investigationAlert) return;
     promoteAlertToUrgent(investigationAlert.alert_id);
-    const success = await handleAcknowledge(investigationAlert.alert_id);
-    if (success) {
-      closeInvestigateModal();
-    }
+    const success = await handleAcknowledge(
+      investigationAlert.alert_id,
+      `Dispatch help successful for alert ${investigationAlert.alert_id}.`
+    );
+    if (success) closeInvestigateModal();
   }
 
   async function handleInvestigateAcknowledge() {
@@ -260,33 +273,32 @@ function App() {
   }
 
   function handlePrimaryAction(alert) {
-    if (getAlertClassification(alert) === "UNCERTAIN") {
+    const classification = getAlertClassification(alert);
+    if (classification === "UNCERTAIN") {
       setInvestigationAlert(alert);
       return;
     }
-    handleAcknowledge(alert.alert_id);
+    const successMessage =
+      classification === "URGENT"
+        ? `Dispatch help successful for alert ${alert.alert_id}.`
+        : `Alert ${alert.alert_id} acknowledged successfully.`;
+    handleAcknowledge(alert.alert_id, successMessage);
   }
 
   const sortedAlerts = useMemo(() => {
     return [...alerts].sort((a, b) => {
       const classificationDiff =
-        classificationPriority[getAlertClassification(a)] -
-        classificationPriority[getAlertClassification(b)];
+        classificationPriority[getAlertClassification(a)] - classificationPriority[getAlertClassification(b)];
       if (classificationDiff !== 0) return classificationDiff;
       return new Date(b.created_at) - new Date(a.created_at);
     });
   }, [alerts]);
 
-  const totalActive = alerts.filter((a) => a.status === "open").length;
-  const urgentCount = alerts.filter(
-    (a) => a.status === "open" && getAlertClassification(a) === "URGENT"
-  ).length;
-  const helpDispatched = alerts.filter(
-    (a) => a.status === "acknowledged"
-  ).length;
-  const visibleAlerts = sortedAlerts.filter((a) =>
-    selectedTab === "active" ? a.status === "open" : a.status === "acknowledged"
-  );
+  const activeCount = alerts.filter((a) => a.status === "open").length;
+  const urgentCount = alerts.filter((a) => a.status === "open" && getAlertClassification(a) === "URGENT").length;
+  const uncertainCount = alerts.filter((a) => a.status === "open" && getAlertClassification(a) === "UNCERTAIN").length;
+  const nonUrgentCount = alerts.filter((a) => a.status === "open" && getAlertClassification(a) === "NON-URGENT").length;
+  const visibleAlerts = sortedAlerts.filter((a) => (selectedTab === "active" ? a.status === "open" : a.status === "acknowledged"));
 
   if (loading) return <main className="layout">Loading alerts...</main>;
 
@@ -298,117 +310,132 @@ function App() {
             <PhoneIcon />
           </div>
           <div className="brand-info">
-            <h1>Helpline Dashboard</h1>
-            <p className="operator-tag">Operator: x</p>
+            <h1>Personal Alert Button Dashboard</h1>
           </div>
         </div>
 
         <div className="nav-right">
           <div className="notification-trigger" ref={notificationRef}>
-  <button
-    className={`nav-icon-btn ${notifications.length > 0 ? "has-alerts" : ""}`}
-    onClick={() => setShowNotifications((prev) => !prev)}
-  >
-    <BellIcon />
-    {notifications.length > 0 && (
-      <span className="badge-count">{notifications.length}</span>
-    )}
-  </button>
+            <button
+              className={`nav-icon-btn ${notifications.length > 0 ? "has-alerts" : ""}`}
+              onClick={() => setShowNotifications((prev) => !prev)}
+            >
+              <BellIcon />
+              {notifications.length > 0 && <span className="badge-count">{notifications.length}</span>}
+            </button>
 
-  {showNotifications && (
-    <div
-      className="notification-overlay-panel"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="notification-overlay-header">
-        <h3>Active Call Notifications</h3>
-        <span>{notifications.length} open</span>
-      </div>
+            {showNotifications && (
+              <div className="notification-overlay-panel" onClick={(e) => e.stopPropagation()}>
+                <div className="notification-overlay-header">
+                  <h3>Active Call Notifications</h3>
+                  <span>{notifications.length} open</span>
+                </div>
 
-      <div className="notification-overlay-body">
-        {notifications.length === 0 ? (
-          <div className="notification-empty">No new active calls.</div>
-        ) : (
-          notifications.map((note) => (
-            <div key={note.alert_id} className="notification-item">
-              <div className="notification-item-top">
-                <strong>{note.alert_id}</strong>
-                <span
-                  className={`badge-pill badge-${getAlertClassification(note).toLowerCase()}`}
-                >
-                  {getAlertClassification(note)}
-                </span>
+                <div className="notification-overlay-body">
+                  {notifications.length === 0 ? (
+                    <div className="notification-empty">No new active calls.</div>
+                  ) : (
+                    notifications.map((note) => (
+                      <div key={note.alert_id} className="notification-item">
+                        <div className="notification-item-top">
+                          <strong>{note.alert_id}</strong>
+                          <span className={`badge-pill badge-${getAlertClassification(note).toLowerCase()}`}>
+                            {getAlertClassification(note)}
+                          </span>
+                        </div>
+
+                        <p className="notification-message">
+                          {note.english_translation || note.transcript || "No call summary available."}
+                        </p>
+
+                        <div className="notification-meta">
+                          <span>Device #{note.box_id}</span>
+                          <span>
+                            {note.created_at ? new Date(note.created_at).toLocaleTimeString() : "Unknown time"}
+                          </span>
+                        </div>
+
+                        <button className="notif-ack-btn" onClick={() => handlePrimaryAction(note)}>
+                          {getPrimaryActionLabel(note)}
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
+            )}
+          </div>
 
-              <p className="notification-message">
-                {note.english_translation ||
-                  note.transcript ||
-                  "No call summary available."}
-              </p>
-
-              <div className="notification-meta">
-                <span>Device #{note.box_id}</span>
-                <span>
-                  {note.created_at
-                    ? new Date(note.created_at).toLocaleTimeString()
-                    : "Unknown time"}
+          <div className="user-menu" ref={userMenuRef}>
+            <button className="user-menu-btn" onClick={() => setShowUserMenu((prev) => !prev)}>
+              <span className="signout-inner">
+                User
+                <span className="signout-icon">
+                  <SignOutIcon />
                 </span>
-              </div>
-
-              <button
-                className="notif-ack-btn"
-                onClick={() => handlePrimaryAction(note)}
-              >
-                {getPrimaryActionLabel(note)}
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  )}
-</div>
-
-          <button className="sign-out-btn">
-            <span className="signout-inner">
-              Sign Out
-              <span className="signout-icon">
-                <SignOutIcon />
               </span>
-            </span>
-          </button>
+            </button>
+            {showUserMenu && (
+              <div className="user-menu-dropdown">
+                <button className="user-menu-item" onClick={() => setShowUserMenu(false)}>
+                  Log Out
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </nav>
 
-      <section className="stats-row">
-        <div className="stat-card">
-          <div className="stat-info">
-            <label>Total Active Calls</label>
-            <span className="stat-value">{totalActive}</span>
-          </div>
-          <div className="stat-icon icon-blue">
-            <PhoneIcon />
-          </div>
+      {incomingCallNotices.length > 0 && (
+        <div className="notification-stack" aria-live="assertive">
+          {incomingCallNotices.map((notice) => (
+            <div key={notice.id} className="notif-card">
+              <div className="notif-content">
+                <strong>New Call: {notice.alertId}</strong>
+                <p>{notice.message}{notice.createdAt ? ` (${new Date(notice.createdAt).toLocaleTimeString()})` : ""}</p>
+              </div>
+              <button className="notif-ack-btn" onClick={() => acknowledgeIncomingNotice(notice.id)}>
+                Acknowledge
+              </button>
+            </div>
+          ))}
         </div>
+      )}
 
+      {actionToasts.length > 0 && (
+        <div className="action-toast-stack" aria-live="polite" aria-atomic="true">
+          {actionToasts.map((toast) => (
+            <div key={toast.id} className="action-toast">
+              <strong>Success</strong>
+              <p>{toast.message}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <section className="stats-row">
         <div className="stat-card">
           <div className="stat-info">
             <label>Urgent Calls</label>
             <span className="stat-value text-red">{urgentCount}</span>
           </div>
-          <div className="stat-icon icon-red">
-            <PhoneIcon />
-          </div>
+          <div className="stat-icon icon-red"><PhoneIcon /></div>
         </div>
 
         <div className="stat-card">
           <div className="stat-info">
-            <label>Help Dispatched</label>
-            <span className="stat-value text-green">{helpDispatched}</span>
+            <label>Uncertain Calls</label>
+            <span className="stat-value text-yellow">{uncertainCount}</span>
           </div>
-          <div className="stat-icon icon-green">
-            <PhoneIcon />
+          <div className="stat-icon icon-yellow"><PhoneIcon /></div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-info">
+            <label>Non-Urgent Calls</label>
+            <span className="stat-value text-green">{nonUrgentCount}</span>
           </div>
+          <div className="stat-icon icon-green"><PhoneIcon /></div>
         </div>
       </section>
 
@@ -420,7 +447,7 @@ function App() {
           className={`alerts-tab ${selectedTab === "active" ? "is-active" : ""}`}
           onClick={() => setSelectedTab("active")}
         >
-          Active Calls
+          Active Calls <span className="tab-badge">{activeCount}</span>
         </button>
         <button
           type="button"
@@ -432,47 +459,44 @@ function App() {
           Completed
         </button>
       </div>
+
       {error && <p className="error">{error}</p>}
 
       <section className="cards">
         {visibleAlerts.length === 0 && (
           <p className="cards-empty">
-            {selectedTab === "active"
-              ? "No active calls right now."
-              : "No completed calls yet."}
+            {selectedTab === "active" ? "No active calls right now." : "No completed calls yet."}
           </p>
         )}
+
         {visibleAlerts.map((alert) => (
           <article
             key={alert.alert_id}
-            className={`active-call-card ${
-              alert.status === "acknowledged" ? "acknowledged-dim" : ""
-            }`}
+            className={`active-call-card ${alert.status === "acknowledged" ? "acknowledged-dim" : ""}`}
           >
             <div className="call-heading">
-              <div className="warning-circle">⚠</div>
+              <div className="warning-circle">?</div>
               <div className="call-heading-main">
                 <h3>Call ID: {alert.alert_id}</h3>
-                <span
-                  className={`badge-pill badge-${getAlertClassification(alert).toLowerCase()}`}
-                >
+                <span className={`badge-pill badge-${getAlertClassification(alert).toLowerCase()}`}>
                   {getAlertClassification(alert)}
                 </span>
               </div>
             </div>
 
+            <div className="summary-box">
+              <label>Call Summary</label>
+              <p>{alert.english_translation || alert.transcript || "No translation available."}</p>
+            </div>
+
+            <div className="detail-block">
+              <label>Dialect</label>
+              <p>{getAlertDialect(alert)}</p>
+            </div>
+
             <div className="field-group">
               <label>Resident</label>
               <p className="field-value">Resident Name (ID: {alert.box_id})</p>
-            </div>
-
-            <div className="summary-box">
-              <label>Call Summary</label>
-              <p>
-                {alert.english_translation ||
-                  alert.transcript ||
-                  "No translation available."}
-              </p>
             </div>
 
             <div className="detail-block">
@@ -487,18 +511,11 @@ function App() {
 
             <div className="detail-block">
               <label>Time Alerted</label>
-              <p>
-                {alert.created_at
-                  ? new Date(alert.created_at).toLocaleString()
-                  : "Unknown"}
-              </p>
+              <p>{alert.created_at ? new Date(alert.created_at).toLocaleString() : "Unknown"}</p>
             </div>
 
             {alert.status === "open" ? (
-              <button
-                className="btn-ack"
-                onClick={() => handlePrimaryAction(alert)}
-              >
+              <button className="btn-ack" onClick={() => handlePrimaryAction(alert)}>
                 {getPrimaryActionLabel(alert)}
               </button>
             ) : (
@@ -511,21 +528,10 @@ function App() {
       </section>
 
       {investigationAlert && (
-        <div
-          className="investigate-modal-backdrop"
-          onClick={closeInvestigateModal}
-        >
-          <div
-            className="investigate-modal"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="investigate-modal-title"
-          >
+        <div className="investigate-modal-backdrop" onClick={closeInvestigateModal}>
+          <div className="investigate-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="investigate-modal-title">
             <div className="investigate-modal-header">
-              <h3 id="investigate-modal-title">
-                Investigate Alert {investigationAlert.alert_id}
-              </h3>
+              <h3 id="investigate-modal-title">Investigate Alert {investigationAlert.alert_id}</h3>
             </div>
 
             <div className="investigate-modal-body">
@@ -536,26 +542,13 @@ function App() {
 
               <div className="investigate-section">
                 <label>English Translation</label>
-                <p>
-                  {investigationAlert.english_translation ||
-                    "No translation available."}
-                </p>
+                <p>{investigationAlert.english_translation || "No translation available."}</p>
               </div>
             </div>
 
             <div className="investigate-modal-actions">
-              <button
-                className="btn-ack"
-                onClick={handleInvestigateDispatch}
-              >
-                Dispatch Help
-              </button>
-              <button
-                className="btn-ack"
-                onClick={handleInvestigateAcknowledge}
-              >
-                Acknowledge
-              </button>
+              <button className="btn-ack" onClick={handleInvestigateDispatch}>Dispatch Help</button>
+              <button className="btn-ack" onClick={handleInvestigateAcknowledge}>Acknowledge</button>
             </div>
           </div>
         </div>
