@@ -11,7 +11,7 @@ Senior emergency alert system built with:
 3. Backend makes a single AI call to process transcript, translation, and severity.
 4. Backend stores results in Supabase PostgreSQL tables: `boxes` and `alerts`.
 5. React dashboard receives new alerts in realtime over WebSocket.
-6. Dashboard sorts alerts by severity: EMERGENCY -> URGENT -> ROUTINE.
+6. Dashboard sorts alerts by severity: URGENT -> UNCERTAIN -> NON-URGENT.
 7. Staff can acknowledge an alert.
 
 ## Repository Layout

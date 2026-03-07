@@ -42,7 +42,7 @@ Return valid JSON with keys:
 - detected_language
 - transcript
 - english_translation
-- severity (EMERGENCY, URGENT, or ROUTINE)
+- severity (URGENT, UNCERTAIN, or NON-URGENT)
 Classify severity carefully for helpdesk triage.
 """.strip()
 
@@ -107,7 +107,7 @@ def _simulate_result() -> Dict[str, str | bool]:
         "detected_language": "English",
         "transcript": "Please help, I slipped near the bathroom and cannot stand.",
         "english_translation": "Please help, I slipped near the bathroom and cannot stand.",
-        "severity": "EMERGENCY",
+        "severity": "URGENT",
     }
 
 
@@ -141,7 +141,7 @@ def analyze_audio_single_call(audio_bytes: bytes, mime_type: str = "audio/wav") 
                             "type": "text",
                             "text": (
                                 "Transcribe speech in original language, translate to English, and classify "
-                                "severity as EMERGENCY, URGENT, or ROUTINE. Return JSON only."
+                                "severity as URGENT, UNCERTAIN, or NON-URGENT. Return JSON only."
                             ),
                         },
                         {

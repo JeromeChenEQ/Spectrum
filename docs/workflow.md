@@ -20,5 +20,5 @@
 ## Dashboard
 - React dashboard reads alerts via REST.
 - Dashboard receives realtime updates over WebSocket.
-- Alerts sorted by severity: EMERGENCY -> URGENT -> ROUTINE.
+- Alerts sorted by severity: URGENT -> UNCERTAIN -> NON-URGENT.
 - Operator acknowledges alert from the UI.

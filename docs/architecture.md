@@ -22,9 +22,9 @@
 
 ## Severity Logic
 Allowed values:
-- `EMERGENCY`
 - `URGENT`
-- `ROUTINE`
+- `UNCERTAIN`
+- `NON-URGENT`
 
 ## Language Support
 Prompt and response schema support:

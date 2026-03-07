@@ -16,7 +16,7 @@ class AlertResponse(BaseModel):
     detected_language: str
     transcript: str
     english_translation: str
-    severity: Literal["EMERGENCY", "URGENT", "ROUTINE"]
+    severity: Literal["URGENT", "UNCERTAIN", "NON-URGENT"]
     status: Literal["open", "acknowledged"]
     is_simulated_ai: bool
     created_at: datetime

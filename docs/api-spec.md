@@ -25,7 +25,7 @@ Response `201`:
   "detected_language": "Cantonese",
   "transcript": "...",
   "english_translation": "...",
-  "severity": "EMERGENCY",
+  "severity": "URGENT",
   "status": "open",
   "created_at": "2026-03-07T12:34:56"
 }
