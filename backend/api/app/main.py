@@ -10,6 +10,8 @@ from app.models import Base
 from app.database import engine
 from app.routers.alerts import alerts_router
 
+if settings.auto_create_tables:
+    Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

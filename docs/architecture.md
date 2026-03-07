@@ -8,10 +8,10 @@
 2. FastAPI Backend (`backend/api`)
 - Receives multipart upload (`box_id`, WAV file).
 - Calls OpenAI once for transcript + translation + severity classification.
-- Inserts alert into MySQL.
+- Inserts alert into Supabase PostgreSQL.
 - Pushes new alert events via WebSocket to connected dashboard clients.
 
-3. MySQL Database (`database/schema.sql`)
+3. Supabase PostgreSQL (`database/schema.sql`)
 - `boxes`: device/resident metadata.
 - `alerts`: each emergency event and processing result.
 

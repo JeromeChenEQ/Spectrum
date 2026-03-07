@@ -1,25 +1,48 @@
-const API_BASE_URL = "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const WS_BASE_URL = API_BASE_URL.replace(/^http/, "ws");
 
 export async function fetchAlerts() {
-  const response = await fetch(`${API_BASE_URL}/api/v1/alerts`);
-  if (!response.ok) {
-    throw new Error("Failed to load alerts");
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}/api/v1/alerts`);
+  } catch (error) {
+    throw new Error(
+      `Network error: dashboard cannot reach ${API_BASE_URL}. ` +
+        `Ensure backend is running and reachable, then verify ${API_BASE_URL}/health.`
+    );
   }
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Backend error while loading alerts (${response.status}): ${errorText}`);
+  }
+
   return response.json();
 }
 
 export async function acknowledgeAlert(alertId) {
-  const response = await fetch(`${API_BASE_URL}/api/v1/alerts/${alertId}/acknowledge`, {
-    method: "PATCH"
-  });
-  if (!response.ok) {
-    throw new Error("Failed to acknowledge alert");
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}/api/v1/alerts/${alertId}/acknowledge`, {
+      method: "PATCH"
+    });
+  } catch (error) {
+    throw new Error(
+      `Network error: dashboard cannot reach ${API_BASE_URL}. ` +
+        `Ensure backend is running and reachable, then verify ${API_BASE_URL}/health.`
+    );
   }
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Backend error while acknowledging alert (${response.status}): ${errorText}`);
+  }
+
   return response.json();
 }
 
 export function connectAlertsWebSocket(onMessage) {
-  const socket = new WebSocket("ws://localhost:8000/api/v1/alerts/ws");
+  const socket = new WebSocket(`${WS_BASE_URL}/api/v1/alerts/ws`);
 
   socket.onmessage = (event) => {
     try {
