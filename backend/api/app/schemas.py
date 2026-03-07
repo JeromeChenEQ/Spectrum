@@ -5,7 +5,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-
 class AlertResponse(BaseModel):
     """Serialized alert payload for API and websocket clients."""
 
@@ -16,9 +15,11 @@ class AlertResponse(BaseModel):
     detected_language: str
     transcript: str
     english_translation: str
-    severity: Literal["URGENT", "UNCERTAIN", "NON-URGENT","EMERGENCY","ROUTINE"]
+    severity: Literal["URGENT", "UNCERTAIN", "NON-URGENT"]
     status: Literal["open", "acknowledged"]
-
+    confidence_score: float
+    keywords: list[str]
+    distress_indicators: list[str]
     created_at: datetime
     acknowledged_at: datetime | None = None
 

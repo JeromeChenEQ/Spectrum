@@ -98,7 +98,8 @@ async def create_alert_from_device(
         status="open",
         confidence_score=ai_result.get("confidence_score", 0.0),
         keywords=ai_result.get("keywords", []),
-        distress_indicators=ai_result.get("distress_indicators", [])
+        distress_indicators=ai_result.get("distress_indicators", []),
+        summary=ai_result.get("summary", ""),
     )
     db.add(alert)
     db.commit()
