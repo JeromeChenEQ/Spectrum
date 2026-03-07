@@ -130,63 +130,56 @@ function App() {
   </button>
 
   {showNotifications && (
-    <>
-      <div
-        className="notification-overlay-backdrop"
-        onClick={() => setShowNotifications(false)}
-      />
-
-      <div
-        className="notification-overlay-panel"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="notification-overlay-header">
-          <h3>Active Call Notifications</h3>
-          <span>{notifications.length} open</span>
-        </div>
-
-        <div className="notification-overlay-body">
-          {notifications.length === 0 ? (
-            <div className="notification-empty">No new active calls.</div>
-          ) : (
-            notifications.map((note) => (
-              <div key={note.alert_id} className="notification-item">
-                <div className="notification-item-top">
-                  <strong>{note.alert_id}</strong>
-                  <span
-                    className={`badge-pill badge-${note.severity.toLowerCase()}`}
-                  >
-                    {severityLabel[note.severity] || note.severity}
-                  </span>
-                </div>
-
-                <p className="notification-message">
-                  {note.english_translation ||
-                    note.transcript ||
-                    "No call summary available."}
-                </p>
-
-                <div className="notification-meta">
-                  <span>Device #{note.box_id}</span>
-                  <span>
-                    {note.created_at
-                      ? new Date(note.created_at).toLocaleTimeString()
-                      : "Unknown time"}
-                  </span>
-                </div>
-
-                <button
-                  className="notif-ack-btn"
-                  onClick={() => handleAcknowledge(note.alert_id)}
-                >
-                  Acknowledge
-                </button>
-              </div>
-            ))
-          )}
-        </div>
+    <div
+      className="notification-overlay-panel"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="notification-overlay-header">
+        <h3>Active Call Notifications</h3>
+        <span>{notifications.length} open</span>
       </div>
-    </>
+
+      <div className="notification-overlay-body">
+        {notifications.length === 0 ? (
+          <div className="notification-empty">No new active calls.</div>
+        ) : (
+          notifications.map((note) => (
+            <div key={note.alert_id} className="notification-item">
+              <div className="notification-item-top">
+                <strong>{note.alert_id}</strong>
+                <span
+                  className={`badge-pill badge-${note.severity.toLowerCase()}`}
+                >
+                  {severityLabel[note.severity] || note.severity}
+                </span>
+              </div>
+
+              <p className="notification-message">
+                {note.english_translation ||
+                  note.transcript ||
+                  "No call summary available."}
+              </p>
+
+              <div className="notification-meta">
+                <span>Device #{note.box_id}</span>
+                <span>
+                  {note.created_at
+                    ? new Date(note.created_at).toLocaleTimeString()
+                    : "Unknown time"}
+                </span>
+              </div>
+
+              <button
+                className="notif-ack-btn"
+                onClick={() => handleAcknowledge(note.alert_id)}
+              >
+                Acknowledge
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   )}
 </div>
 
