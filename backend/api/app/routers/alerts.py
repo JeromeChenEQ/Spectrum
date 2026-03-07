@@ -3,7 +3,7 @@
 import asyncio
 import functools
 import inspect
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.exc import SQLAlchemyError
@@ -96,8 +96,8 @@ async def create_alert_from_device(
         severity=severity,
         status="open",
         confidence_score=ai_result.get("confidence_score", 0.0),
-        keywords=ai_result.get("keywords", ""),
-        distress_indicators=ai_result.get("distress_indicators", "")
+        keywords=ai_result.get("keywords", []),
+        distress_indicators=ai_result.get("distress_indicators", [])
     )
     db.add(alert)
     db.commit()
@@ -117,7 +117,13 @@ async def list_alerts(
 ):
     """List all alerts ordered by newest first."""
     try:
-        alerts = db.query(Alert).order_by(Alert.created_at.desc()).all()
+        alerts = (
+            db.query(Alert)
+            .order_by(Alert.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
         return alerts
     except SQLAlchemyError as error:
         raise HTTPException(status_code=500, detail=f"Database query failed: {error}") from error
@@ -135,7 +141,7 @@ async def acknowledge_alert(alert_id: int, db: Session = Depends(get_db_session)
             raise HTTPException(status_code=404, detail="alert not found")
 
         alert.status = "acknowledged"
-        alert.acknowledged_at = datetime.utcnow()
+        alert.acknowledged_at = datetime.now(timezone.utc)
         db.commit()
     except SQLAlchemyError as error:
         raise HTTPException(status_code=500, detail=f"Database update failed: {error}") from error
