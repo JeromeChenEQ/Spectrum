@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 import os
 from pathlib import Path
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse, urlunparse
 from dotenv import load_dotenv
 
 APP_ROOT = Path(__file__).resolve().parents[1]
@@ -57,5 +57,10 @@ def get_database_url() -> str:
         raise ValueError(
             "SUPABASE_DB_PASSWORD is required when SUPABASE_DB_URL contains a password placeholder"
         )
+
+    parsed = urlparse(database_url)
+    if parsed.hostname and parsed.hostname.endswith(".pooler.supabase.com") and parsed.port == 5432:
+        netloc = parsed.netloc.rsplit(":5432", 1)[0] + ":6543"
+        database_url = urlunparse(parsed._replace(netloc=netloc))
 
     return database_url

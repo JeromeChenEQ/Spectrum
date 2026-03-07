@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
@@ -68,20 +69,26 @@ async def create_alert_from_device(
 @alerts_router.get("", response_model=list[AlertResponse])
 def list_alerts(db: Session = Depends(get_db_session)):
     """List all alerts ordered by newest first."""
-    alerts = db.query(Alert).order_by(Alert.created_at.desc()).all()
-    return alerts
+    try:
+        alerts = db.query(Alert).order_by(Alert.created_at.desc()).all()
+        return alerts
+    except SQLAlchemyError as error:
+        raise HTTPException(status_code=500, detail=f"Database query failed: {error}") from error
 
 
 @alerts_router.patch("/{alert_id}/acknowledge", response_model=AcknowledgeResponse)
 async def acknowledge_alert(alert_id: int, db: Session = Depends(get_db_session)):
     """Acknowledge an existing alert."""
-    alert = db.query(Alert).filter(Alert.alert_id == alert_id).first()
-    if alert is None:
-        raise HTTPException(status_code=404, detail="alert not found")
+    try:
+        alert = db.query(Alert).filter(Alert.alert_id == alert_id).first()
+        if alert is None:
+            raise HTTPException(status_code=404, detail="alert not found")
 
-    alert.status = "acknowledged"
-    alert.acknowledged_at = datetime.utcnow()
-    db.commit()
+        alert.status = "acknowledged"
+        alert.acknowledged_at = datetime.utcnow()
+        db.commit()
+    except SQLAlchemyError as error:
+        raise HTTPException(status_code=500, detail=f"Database update failed: {error}") from error
 
     await alert_connection_manager.broadcast(
         {
