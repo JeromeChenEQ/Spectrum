@@ -26,14 +26,14 @@ class Alert(Base):
     __tablename__ = "alerts"
 
     alert_id = Column(Integer, primary_key=True, index=True)
-    box_id = Column(Integer, ForeignKey("boxes.box_id"), nullable=False)
+    box_id = Column(Integer, ForeignKey("boxes.box_id"), nullable=False, index=True)
     detected_language = Column(String(40), nullable=False)
     transcript = Column(Text, nullable=False)
     english_translation = Column(Text, nullable=False)
     severity = Column(String(20), nullable=False)
     status = Column(String(20), nullable=False, default="open")
     is_simulated_ai = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False, index=True)
     acknowledged_at = Column(DateTime, nullable=True)
 
     box = relationship("Box", back_populates="alerts")

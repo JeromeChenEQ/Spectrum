@@ -10,6 +10,14 @@ APP_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(APP_ROOT / ".env")
 
 
+def _int_env(key: str, default: str) -> int:
+    """Safely parse an integer env var."""
+    try:
+        return int(os.getenv(key, default))
+    except ValueError:
+        return int(default)
+
+
 @dataclass(frozen=True)
 class Settings:
     """Runtime settings loaded from environment variables."""
@@ -31,7 +39,7 @@ class Settings:
     db_ssl_verify: bool = os.getenv("DB_SSL_VERIFY", "true").lower() == "true"
     auto_create_tables: bool = os.getenv("AUTO_CREATE_TABLES", "false").lower() == "true"
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
-    max_audio_seconds: int = int(os.getenv("MAX_AUDIO_SECONDS", "60"))
+    max_audio_seconds: int = _int_env("MAX_AUDIO_SECONDS", "60")
 
 
 settings = Settings()
