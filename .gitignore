@@ -7,6 +7,7 @@ backend/api/.env
 # Node
 dashboard/node_modules/
 dashboard/dist/
+dashboard/.env
 
 # IDE/OS
 .vscode/

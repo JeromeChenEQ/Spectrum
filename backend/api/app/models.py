@@ -1,6 +1,6 @@
 """SQLAlchemy ORM models."""
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -30,8 +30,8 @@ class Alert(Base):
     detected_language = Column(String(40), nullable=False)
     transcript = Column(Text, nullable=False)
     english_translation = Column(Text, nullable=False)
-    severity = Column(Enum("EMERGENCY", "URGENT", "ROUTINE", name="severity_enum"), nullable=False)
-    status = Column(Enum("open", "acknowledged", name="alert_status_enum"), nullable=False, default="open")
+    severity = Column(String(20), nullable=False)
+    status = Column(String(20), nullable=False, default="open")
     is_simulated_ai = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     acknowledged_at = Column(DateTime, nullable=True)

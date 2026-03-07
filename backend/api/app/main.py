@@ -3,11 +3,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import settings
 from app.models import Base
 from app.database import engine
 from app.routers.alerts import alerts_router
 
-Base.metadata.create_all(bind=engine)
+if settings.auto_create_tables:
+    Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Spectrum SeniorAid API", version="1.0.0")
 

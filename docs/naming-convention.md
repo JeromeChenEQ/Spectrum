@@ -11,7 +11,7 @@
 - Variables/functions: `camelCase`
 - Constants: `UPPER_SNAKE_CASE`
 
-## MySQL
+## PostgreSQL (Supabase)
 - Table names: plural `snake_case` (`boxes`, `alerts`)
 - Column names: `snake_case`
 - PKs: singular id (`box_id`, `alert_id`)

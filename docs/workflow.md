@@ -13,7 +13,7 @@
 - Response includes: detected language, transcript, English translation, severity.
 
 ## Storage
-- Backend writes to MySQL tables:
+- Backend writes to Supabase PostgreSQL tables:
   - `boxes`: resident metadata
   - `alerts`: each press result and status
 

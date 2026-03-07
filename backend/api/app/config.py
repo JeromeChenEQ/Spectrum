@@ -2,9 +2,12 @@
 
 from dataclasses import dataclass
 import os
+from pathlib import Path
+from urllib.parse import quote_plus
 from dotenv import load_dotenv
 
-load_dotenv()
+APP_ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(APP_ROOT / ".env")
 
 
 @dataclass(frozen=True)
@@ -12,13 +15,47 @@ class Settings:
     """Runtime settings loaded from environment variables."""
 
     app_env: str = os.getenv("APP_ENV", "development")
-    mysql_host: str = os.getenv("MYSQL_HOST", "localhost")
-    mysql_port: int = int(os.getenv("MYSQL_PORT", "3306"))
-    mysql_user: str = os.getenv("MYSQL_USER", "root")
-    mysql_password: str = os.getenv("MYSQL_PASSWORD", "")
-    mysql_database: str = os.getenv("MYSQL_DATABASE", "spectrum_senioraid")
+    supabase_db_url: str = (
+        os.getenv("SUPABASE_DB_URL")
+        or os.getenv("DB_URL")
+        or os.getenv("DATABASE_URL")
+        or ""
+    )
+    supabase_db_password: str = (
+        os.getenv("SUPABASE_DB_PASSWORD")
+        or os.getenv("DB_PASSWORD")
+        or ""
+    )
+    db_sslmode: str = os.getenv("DB_SSLMODE", "require")
+    auto_create_tables: bool = os.getenv("AUTO_CREATE_TABLES", "false").lower() == "true"
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     max_audio_seconds: int = int(os.getenv("MAX_AUDIO_SECONDS", "60"))
 
 
 settings = Settings()
+
+
+def get_database_url() -> str:
+    """Build the SQLAlchemy URL for Supabase PostgreSQL."""
+    if not settings.supabase_db_url:
+        raise ValueError("SUPABASE_DB_URL (or DB_URL / DATABASE_URL) is required")
+
+    database_url = settings.supabase_db_url
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+
+    if settings.supabase_db_password:
+        encoded_password = quote_plus(settings.supabase_db_password)
+        database_url = (
+            database_url
+            .replace("[YOUR-PASSWORD]", encoded_password)
+            .replace("<YOUR-PASSWORD>", encoded_password)
+            .replace("YOUR_PASSWORD", encoded_password)
+        )
+
+    if "[YOUR-PASSWORD]" in database_url or "<YOUR-PASSWORD>" in database_url:
+        raise ValueError(
+            "SUPABASE_DB_PASSWORD is required when SUPABASE_DB_URL contains a password placeholder"
+        )
+
+    return database_url
