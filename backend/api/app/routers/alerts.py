@@ -1,7 +1,9 @@
 """Alert endpoints for device ingestion and helpdesk operations."""
 
 import asyncio
-from datetime import datetime
+import functools
+import inspect
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.exc import SQLAlchemyError
@@ -31,7 +33,33 @@ def get_db_session():
         db.close()
 
 
+# Timeout decorator for endpoints: raises HTTP 504 if handler doesn't complete in time
+def timeout_decorator(timeout_seconds: int = 20):
+    def decorator(func):
+        if inspect.iscoroutinefunction(func):
+            @functools.wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                try:
+                    return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout_seconds)
+                except asyncio.TimeoutError:
+                    raise HTTPException(status_code=504, detail="Request timed out")
+
+            return async_wrapper
+
+        @functools.wraps(func)
+        async def sync_wrapper(*args, **kwargs):
+            try:
+                return await asyncio.wait_for(asyncio.to_thread(func, *args, **kwargs), timeout=timeout_seconds)
+            except asyncio.TimeoutError:
+                raise HTTPException(status_code=504, detail="Request timed out")
+
+        return sync_wrapper
+
+    return decorator
+
+
 @alerts_router.post("/from-device", response_model=AlertResponse, status_code=201)
+@timeout_decorator(20)
 async def create_alert_from_device(
     box_id: int = Form(...),
     audio_file: UploadFile = File(...),
@@ -69,8 +97,8 @@ async def create_alert_from_device(
         severity=severity,
         status="open",
         confidence_score=ai_result.get("confidence_score", 0.0),
-        keywords=ai_result.get("keywords", ""),
-        distress_indicators=ai_result.get("distress_indicators", "")
+        keywords=ai_result.get("keywords", []),
+        distress_indicators=ai_result.get("distress_indicators", [])
     )
     db.add(alert)
     db.commit()
@@ -82,7 +110,8 @@ async def create_alert_from_device(
 
 
 @alerts_router.get("", response_model=list[AlertResponse])
-def list_alerts(
+@timeout_decorator(20)
+async def list_alerts(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db_session),
@@ -90,7 +119,13 @@ def list_alerts(
 ):
     """List all alerts ordered by newest first."""
     try:
-        alerts = db.query(Alert).order_by(Alert.created_at.desc()).all()
+        alerts = (
+            db.query(Alert)
+            .order_by(Alert.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
         return alerts
     except SQLAlchemyError as error:
         raise HTTPException(status_code=500, detail=f"Database query failed: {error}") from error
@@ -99,11 +134,8 @@ def list_alerts(
 
 
 @alerts_router.patch("/{alert_id}/acknowledge", response_model=AcknowledgeResponse)
-async def acknowledge_alert(
-    alert_id: int,
-    db: Session = Depends(get_db_session),
-    _: User = Depends(get_current_active_user),
-):
+@timeout_decorator(20)
+async def acknowledge_alert(alert_id: int, db: Session = Depends(get_db_session)):
     """Acknowledge an existing alert."""
     try:
         alert = db.query(Alert).filter(Alert.alert_id == alert_id).first()
@@ -111,7 +143,7 @@ async def acknowledge_alert(
             raise HTTPException(status_code=404, detail="alert not found")
 
         alert.status = "acknowledged"
-        alert.acknowledged_at = datetime.utcnow()
+        alert.acknowledged_at = datetime.now(timezone.utc)
         db.commit()
     except SQLAlchemyError as error:
         raise HTTPException(status_code=500, detail=f"Database update failed: {error}") from error

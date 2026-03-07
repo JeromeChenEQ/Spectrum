@@ -44,7 +44,6 @@ class Settings:
     jwt_expire_minutes: int = _int_env("JWT_EXPIRE_MINUTES", "480")
     max_audio_seconds: int = _int_env("MAX_AUDIO_SECONDS", "60")
 
-
 settings = Settings()
 
 
