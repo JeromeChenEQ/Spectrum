@@ -18,9 +18,13 @@ Required env values:
 - `DB_SSL_VERIFY` (`true` recommended)
 - `DB_SSL_CA_FILE` (optional custom CA bundle path; defaults to certifi bundle)
 - `OPENAI_API_KEY`
+- `JWT_SECRET_KEY`
+- `JWT_ALGORITHM`
+- `JWT_EXPIRE_MINUTES`
 
 ## Core Responsibilities
 - Receive senior-device audio upload via HTTPS.
 - Process audio in one AI request for transcript + translation + severity.
 - Store alerts in Supabase PostgreSQL.
 - Broadcast new alerts to dashboard via WebSocket.
+- Authenticate helpdesk users via `/api/v1/auth/login` and JWT bearer tokens.

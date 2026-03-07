@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import SessionLocal
-from app.models import Alert, Box
+from app.models import Alert, Box, User
 from app.schemas import AcknowledgeResponse, AlertResponse
+from app.services.auth_service import get_current_active_user, get_current_active_user_from_token
 from app.services.openai_audio_service import analyze_audio_single_call
 from app.services.realtime_broadcaster import alert_connection_manager
 
@@ -85,6 +86,7 @@ def list_alerts(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db_session),
+    _: User = Depends(get_current_active_user),
 ):
     """List all alerts ordered by newest first."""
     try:
@@ -97,7 +99,11 @@ def list_alerts(
 
 
 @alerts_router.patch("/{alert_id}/acknowledge", response_model=AcknowledgeResponse)
-async def acknowledge_alert(alert_id: int, db: Session = Depends(get_db_session)):
+async def acknowledge_alert(
+    alert_id: int,
+    db: Session = Depends(get_db_session),
+    _: User = Depends(get_current_active_user),
+):
     """Acknowledge an existing alert."""
     try:
         alert = db.query(Alert).filter(Alert.alert_id == alert_id).first()
@@ -124,6 +130,20 @@ async def acknowledge_alert(alert_id: int, db: Session = Depends(get_db_session)
 @alerts_router.websocket_route("/ws")
 async def alerts_websocket(websocket: WebSocket):
     """WebSocket channel for realtime alert events."""
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=4401)
+        return
+
+    db = SessionLocal()
+    try:
+        get_current_active_user_from_token(token, db)
+    except HTTPException:
+        await websocket.close(code=4401)
+        return
+    finally:
+        db.close()
+
     await alert_connection_manager.connect(websocket)
     try:
         while True:

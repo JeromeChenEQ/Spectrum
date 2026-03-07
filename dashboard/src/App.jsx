@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { acknowledgeAlert, connectAlertsWebSocket, fetchAlerts } from "./api";
+import {
+  acknowledgeAlert,
+  clearStoredAuth,
+  connectAlertsWebSocket,
+  fetchAlerts,
+  fetchCurrentUser,
+  getStoredAuth,
+  loginUser
+} from "./api";
 import "./styles.css";
 
 const classificationPriority = {
@@ -113,6 +121,53 @@ function SignOutIcon() {
   );
 }
 
+function LoginScreen({ onLogin, loading, error }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  async function submit(event) {
+    event.preventDefault();
+    await onLogin(email, password);
+  }
+
+  return (
+    <main className="layout" style={{ display: "grid", placeItems: "center", minHeight: "100vh" }}>
+      <form onSubmit={submit} className="active-call-card" style={{ width: "min(420px, 100%)" }}>
+        <h2 style={{ marginTop: 0 }}>Helpdesk Login</h2>
+        <p style={{ color: "#6b7280" }}>Sign in to access active emergency alerts.</p>
+
+        <div className="field-group">
+          <label>Email</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            style={{ width: "100%", height: 40, borderRadius: 8, border: "1px solid #d8ddea", padding: "0 10px" }}
+          />
+        </div>
+
+        <div className="field-group">
+          <label>Password</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            style={{ width: "100%", height: 40, borderRadius: 8, border: "1px solid #d8ddea", padding: "0 10px" }}
+          />
+        </div>
+
+        {error ? <p className="error" style={{ marginTop: 0 }}>{error}</p> : null}
+
+        <button className="btn-ack" type="submit" disabled={loading}>
+          {loading ? "Signing in..." : "Sign In"}
+        </button>
+      </form>
+    </main>
+  );
+}
+
 function App() {
   const [alerts, setAlerts] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -124,6 +179,9 @@ function App() {
   const [investigationAlert, setInvestigationAlert] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState("");
 
   const notificationRef = useRef(null);
   const userMenuRef = useRef(null);
@@ -135,39 +193,72 @@ function App() {
   };
 
   useEffect(() => {
+    async function restoreSession() {
+      const auth = getStoredAuth();
+      if (!auth?.access_token) {
+        setAuthLoading(false);
+        return;
+      }
+
+      try {
+        const user = await fetchCurrentUser();
+        setCurrentUser(user);
+      } catch {
+        clearStoredAuth();
+        setCurrentUser(null);
+      } finally {
+        setAuthLoading(false);
+      }
+    }
+
+    restoreSession();
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setLoading(false);
+      return;
+    }
+
     let socket;
+    setLoading(true);
 
     async function loadData() {
       try {
         const initialAlerts = await fetchAlerts();
         setAlerts(initialAlerts);
         setNotifications(initialAlerts.filter((a) => a.status === "open"));
+        setError("");
       } catch (loadError) {
         setError(loadError.message);
       } finally {
         setLoading(false);
       }
 
-      socket = connectAlertsWebSocket((event) => {
-        if (event.type === "alert_created") {
-          const alert = event.payload;
-          setAlerts((current) => [alert, ...current]);
-          setNotifications((prev) => [alert, ...prev]);
-          setIncomingCallNotices((current) => [
-            {
-              id: `${alert.alert_id}-${Date.now()}-${Math.random()}`,
-              alertId: alert.alert_id,
-              message: alert.english_translation || alert.transcript || "A new call was received.",
-              createdAt: alert.created_at
-            },
-            ...current
-          ]);
-        }
+      try {
+        socket = connectAlertsWebSocket((event) => {
+          if (event.type === "alert_created") {
+            const alert = event.payload;
+            setAlerts((current) => [alert, ...current]);
+            setNotifications((prev) => [alert, ...prev]);
+            setIncomingCallNotices((current) => [
+              {
+                id: `${alert.alert_id}-${Date.now()}-${Math.random()}`,
+                alertId: alert.alert_id,
+                message: alert.english_translation || alert.transcript || "A new call was received.",
+                createdAt: alert.created_at
+              },
+              ...current
+            ]);
+          }
 
-        if (event.type === "alert_acknowledged") {
-          updateLocalAlertStatus(event.payload.alert_id);
-        }
-      });
+          if (event.type === "alert_acknowledged") {
+            updateLocalAlertStatus(event.payload.alert_id);
+          }
+        });
+      } catch {
+        // Ignore websocket auth/connect errors in initial load.
+      }
     }
 
     loadData();
@@ -186,7 +277,7 @@ function App() {
       socket?.close();
       clearInterval(interval);
     };
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -208,6 +299,30 @@ function App() {
       toastTimerRef.current.clear();
     };
   }, []);
+
+  async function handleLogin(email, password) {
+    setAuthError("");
+    setAuthLoading(true);
+    try {
+      const authPayload = await loginUser(email, password);
+      setCurrentUser(authPayload.user);
+    } catch (loginError) {
+      setAuthError(loginError.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  function handleLogout() {
+    clearStoredAuth();
+    setCurrentUser(null);
+    setAlerts([]);
+    setNotifications([]);
+    setIncomingCallNotices([]);
+    setActionToasts([]);
+    setShowUserMenu(false);
+    setError("");
+  }
 
   function acknowledgeIncomingNotice(noticeId) {
     setIncomingCallNotices((current) => current.filter((notice) => notice.id !== noticeId));
@@ -300,6 +415,14 @@ function App() {
   const nonUrgentCount = alerts.filter((a) => a.status === "open" && getAlertClassification(a) === "NON-URGENT").length;
   const visibleAlerts = sortedAlerts.filter((a) => (selectedTab === "active" ? a.status === "open" : a.status === "acknowledged"));
 
+  if (authLoading && !currentUser) {
+    return <main className="layout">Checking session...</main>;
+  }
+
+  if (!currentUser) {
+    return <LoginScreen onLogin={handleLogin} loading={authLoading} error={authError} />;
+  }
+
   if (loading) return <main className="layout">Loading alerts...</main>;
 
   return (
@@ -369,7 +492,7 @@ function App() {
           <div className="user-menu" ref={userMenuRef}>
             <button className="user-menu-btn" onClick={() => setShowUserMenu((prev) => !prev)}>
               <span className="signout-inner">
-                User
+                {currentUser.display_name || "User"}
                 <span className="signout-icon">
                   <SignOutIcon />
                 </span>
@@ -377,7 +500,7 @@ function App() {
             </button>
             {showUserMenu && (
               <div className="user-menu-dropdown">
-                <button className="user-menu-item" onClick={() => setShowUserMenu(false)}>
+                <button className="user-menu-item" onClick={handleLogout}>
                   Log Out
                 </button>
               </div>

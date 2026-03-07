@@ -9,6 +9,7 @@ from app.config import settings
 from app.models import Base
 from app.database import engine
 from app.routers.alerts import alerts_router
+from app.routers.auth import auth_router
 
 if settings.auto_create_tables:
     Base.metadata.create_all(bind=engine)
@@ -39,3 +40,4 @@ def health_check():
 
 
 app.include_router(alerts_router)
+app.include_router(auth_router)

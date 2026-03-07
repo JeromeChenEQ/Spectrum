@@ -28,3 +28,27 @@ class AcknowledgeResponse(BaseModel):
 
     alert_id: int
     status: str
+
+
+class LoginRequest(BaseModel):
+    """Request payload for user login."""
+
+    email: str
+    password: str
+
+
+class AuthUserResponse(BaseModel):
+    """Serialized authenticated user profile."""
+
+    user_id: int
+    email: str
+    display_name: str
+    is_active: bool
+
+
+class LoginResponse(BaseModel):
+    """Response payload for successful login."""
+
+    access_token: str
+    token_type: str = "bearer"
+    user: AuthUserResponse

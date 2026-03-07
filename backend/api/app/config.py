@@ -39,6 +39,9 @@ class Settings:
     db_ssl_verify: bool = os.getenv("DB_SSL_VERIFY", "true").lower() == "true"
     auto_create_tables: bool = os.getenv("AUTO_CREATE_TABLES", "false").lower() == "true"
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "change_me")
+    jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")
+    jwt_expire_minutes: int = _int_env("JWT_EXPIRE_MINUTES", "480")
     max_audio_seconds: int = _int_env("MAX_AUDIO_SECONDS", "60")
 
 

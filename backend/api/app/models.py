@@ -1,6 +1,6 @@
 """SQLAlchemy ORM models."""
 
-from sqlalchemy import ARRAY, Column, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import ARRAY, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -39,3 +39,16 @@ class Alert(Base):
     acknowledged_at = Column(DateTime, nullable=True)
 
     box = relationship("Box", back_populates="alerts")
+
+
+class User(Base):
+    """Represents a helpdesk dashboard user account."""
+
+    __tablename__ = "users"
+
+    user_id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), nullable=False, unique=True, index=True)
+    password_hash = Column(String(255), nullable=False)
+    display_name = Column(String(120), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)

@@ -12,7 +12,7 @@ Senior emergency alert system built with:
 4. Backend stores results in Supabase PostgreSQL tables: `boxes` and `alerts`.
 5. React dashboard receives new alerts in realtime over WebSocket.
 6. Dashboard sorts alerts by severity: URGENT -> UNCERTAIN -> NON-URGENT.
-7. Staff can acknowledge an alert.
+7. Staff authenticate via `users` table login and can acknowledge alerts.
 
 ## Repository Layout
 - `backend/api/`: FastAPI service and OpenAI integration.
@@ -24,10 +24,11 @@ Senior emergency alert system built with:
 1. Run SQL scripts in Supabase SQL editor:
    - `database/schema.sql`
    - `database/seed.sql` (optional)
+   - Ensure `users` table exists with hashed passwords.
 2. Configure backend:
    - `cd backend/api`
    - copy `.env.example` to `.env`
-   - set `OPENAI_API_KEY`, `SUPABASE_DB_URL`, and `SUPABASE_DB_PASSWORD`
+   - set `OPENAI_API_KEY`, `SUPABASE_DB_URL`, `SUPABASE_DB_PASSWORD`, and JWT settings
 3. Start backend:
    - `pip install -r requirements.txt`
    - `python -m uvicorn app.main:app --reload --port 8000`
