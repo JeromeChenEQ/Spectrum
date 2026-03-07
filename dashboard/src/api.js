@@ -1,14 +1,28 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
-const WS_BASE_URL = API_BASE_URL.replace(/^http/, "ws");
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || `${protocol}://${window.location.host}`;
+const API_BASE_URL_FALLBACK = null;
+
+async function fetchWithLocalFallback(path, options) {
+  try {
+    return await fetch(`${API_BASE_URL}${path}`, options);
+  } catch (primaryError) {
+    if (!API_BASE_URL_FALLBACK) {
+      throw primaryError;
+    }
+    return fetch(`${API_BASE_URL_FALLBACK}${path}`, options);
+  }
+}
 
 export async function fetchAlerts() {
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}/api/v1/alerts`);
+    response = await fetchWithLocalFallback("/api/v1/alerts");
   } catch (error) {
     throw new Error(
-      `Network error: dashboard cannot reach ${API_BASE_URL}. ` +
-        `Ensure backend is running and reachable, then verify ${API_BASE_URL}/health.`
+      `Network error: dashboard cannot reach backend API. ` +
+        `Ensure backend is running and reachable, then verify http://127.0.0.1:8000/health. ` +
+        `Browser error: ${error?.message || "unknown"}`
     );
   }
 
@@ -23,13 +37,14 @@ export async function fetchAlerts() {
 export async function acknowledgeAlert(alertId) {
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}/api/v1/alerts/${alertId}/acknowledge`, {
+    response = await fetchWithLocalFallback(`/api/v1/alerts/${alertId}/acknowledge`, {
       method: "PATCH"
     });
   } catch (error) {
     throw new Error(
-      `Network error: dashboard cannot reach ${API_BASE_URL}. ` +
-        `Ensure backend is running and reachable, then verify ${API_BASE_URL}/health.`
+      `Network error: dashboard cannot reach backend API. ` +
+        `Ensure backend is running and reachable, then verify http://127.0.0.1:8000/health. ` +
+        `Browser error: ${error?.message || "unknown"}`
     );
   }
 

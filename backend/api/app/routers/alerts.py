@@ -74,6 +74,8 @@ def list_alerts(db: Session = Depends(get_db_session)):
         return alerts
     except SQLAlchemyError as error:
         raise HTTPException(status_code=500, detail=f"Database query failed: {error}") from error
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"Unexpected server error: {error}") from error
 
 
 @alerts_router.patch("/{alert_id}/acknowledge", response_model=AcknowledgeResponse)
@@ -89,6 +91,8 @@ async def acknowledge_alert(alert_id: int, db: Session = Depends(get_db_session)
         db.commit()
     except SQLAlchemyError as error:
         raise HTTPException(status_code=500, detail=f"Database update failed: {error}") from error
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"Unexpected server error: {error}") from error
 
     await alert_connection_manager.broadcast(
         {

@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 import os
 from pathlib import Path
-from urllib.parse import quote_plus, urlparse, urlunparse
+from urllib.parse import parse_qsl, quote_plus, urlencode, urlparse, urlunparse
 from dotenv import load_dotenv
 
 APP_ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +27,8 @@ class Settings:
         or ""
     )
     db_sslmode: str = os.getenv("DB_SSLMODE", "require")
+    db_ssl_ca_file: str = os.getenv("DB_SSL_CA_FILE", "")
+    db_ssl_verify: bool = os.getenv("DB_SSL_VERIFY", "true").lower() == "true"
     auto_create_tables: bool = os.getenv("AUTO_CREATE_TABLES", "false").lower() == "true"
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     max_audio_seconds: int = int(os.getenv("MAX_AUDIO_SECONDS", "60"))
@@ -59,8 +61,18 @@ def get_database_url() -> str:
         )
 
     parsed = urlparse(database_url)
+    if parsed.scheme == "postgresql":
+        database_url = urlunparse(parsed._replace(scheme="postgresql+pg8000"))
+        parsed = urlparse(database_url)
+
     if parsed.hostname and parsed.hostname.endswith(".pooler.supabase.com") and parsed.port == 5432:
         netloc = parsed.netloc.rsplit(":5432", 1)[0] + ":6543"
         database_url = urlunparse(parsed._replace(netloc=netloc))
+        parsed = urlparse(database_url)
+
+    # pg8000 uses ssl_context from SQLAlchemy connect_args, so strip sslmode URL param.
+    if parsed.scheme == "postgresql+pg8000" and parsed.query:
+        query_pairs = [(k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True) if k != "sslmode"]
+        database_url = urlunparse(parsed._replace(query=urlencode(query_pairs)))
 
     return database_url
