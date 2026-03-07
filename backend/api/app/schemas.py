@@ -18,8 +18,8 @@ class AlertResponse(BaseModel):
     english_translation: str
     severity: Literal["URGENT", "UNCERTAIN", "NON-URGENT"]
     confidence_score: float
-    keywords: str
-    distress_indicators: str
+    keywords: list[str]
+    distress_indicators: list[str]
     status: Literal["open", "acknowledged"]
 
     created_at: datetime
