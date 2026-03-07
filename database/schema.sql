@@ -14,9 +14,11 @@ CREATE TABLE IF NOT EXISTS alerts (
     detected_language VARCHAR(40) NOT NULL,
     transcript TEXT NOT NULL,
     english_translation TEXT NOT NULL,
-    severity VARCHAR(20) NOT NULL CHECK (severity IN ('EMERGENCY', 'URGENT', 'ROUTINE')),
+    severity VARCHAR(20) NOT NULL CHECK (severity IN ('URGENT', 'UNCERTAIN', 'NON-URGENT')),
+    confidence_score FLOAT NOT NULL CHECK (confidence_score >= 0 AND confidence_score <= 1),
+    keywords TEXT[] DEFAULT '{}',
+    distress_indacators TEXT[] DEFAULT '{}',
     status VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'acknowledged')),
-    is_simulated_ai BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     acknowledged_at TIMESTAMPTZ NULL,
     CONSTRAINT fk_alerts_boxes FOREIGN KEY (box_id) REFERENCES boxes (box_id)
