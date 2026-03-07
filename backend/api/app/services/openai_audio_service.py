@@ -43,6 +43,9 @@ Return valid JSON with keys:
 - transcript
 - english_translation
 - severity (URGENT, UNCERTAIN, or NON-URGENT)
+- confidence_score
+- keywords
+- distress_indicators
 Classify severity carefully for helpdesk triage.
 """.strip()
 
@@ -115,7 +118,6 @@ def analyze_audio_single_call(audio_bytes: bytes, mime_type: str = "audio/wav") 
     """Analyze audio with one AI request and return normalized JSON fields."""
     if not settings.openai_api_key:
         result = _simulate_result()
-        result["is_simulated_ai"] = True
         return result
     client = _get_client()
 
@@ -162,8 +164,10 @@ def analyze_audio_single_call(audio_bytes: bytes, mime_type: str = "audio/wav") 
             "detected_language": parsed.get("detected_language", "Unknown"),
             "transcript": parsed.get("transcript", ""),
             "english_translation": parsed.get("english_translation", ""),
-            "severity": parsed.get("severity", "ROUTINE"),
-            "is_simulated_ai": False,
+            "severity": parsed.get("severity", "NON-URGENT"),
+            "confidence_score": parsed.get("confidence_score", 0.0),
+            "keywords": parsed.get("keywords", ""),
+            "distress_indicators": parsed.get("distress_indicators", "")
         }
     except Exception as error:
         log.exception("OpenAI audio analysis failed")

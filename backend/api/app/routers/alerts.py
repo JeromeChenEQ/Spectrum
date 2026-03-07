@@ -56,9 +56,9 @@ async def create_alert_from_device(
     except RuntimeError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
 
-    severity = str(ai_result.get("severity", "ROUTINE")).upper()
-    if severity not in {"EMERGENCY", "URGENT", "ROUTINE"}:
-        severity = "ROUTINE"
+    severity = str(ai_result.get("severity", "UNCERTAIN")).upper()
+    if severity not in {"URGENT", "UNCERTAIN", "NON-URGENT"}:
+        severity = "UNCERTAIN"
 
     alert = Alert(
         box_id=box_id,
@@ -67,7 +67,9 @@ async def create_alert_from_device(
         english_translation=ai_result.get("english_translation", ""),
         severity=severity,
         status="open",
-        is_simulated_ai=bool(ai_result.get("is_simulated_ai", False)),
+        confidence_score=ai_result.get("confidence_score", 0.0),
+        keywords=ai_result.get("keywords", ""),
+        distress_indicators=ai_result.get("distress_indicators", "")
     )
     db.add(alert)
     db.commit()

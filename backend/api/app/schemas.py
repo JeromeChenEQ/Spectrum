@@ -17,8 +17,11 @@ class AlertResponse(BaseModel):
     transcript: str
     english_translation: str
     severity: Literal["URGENT", "UNCERTAIN", "NON-URGENT"]
+    confidence_score: float
+    keywords: list[str]
+    distress_indicators: list[str]
     status: Literal["open", "acknowledged"]
-    is_simulated_ai: bool
+
     created_at: datetime
     acknowledged_at: datetime | None = None
 
