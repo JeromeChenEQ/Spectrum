@@ -34,6 +34,7 @@ class Alert(Base):
     confidence_score = Column(Float, nullable=False, default=0.0)
     keywords = Column(ARRAY(String), nullable=True)
     distress_indicators = Column(ARRAY(String), nullable=True)
+    summary = Column(Text, nullable=True)
     status = Column(String(20), nullable=False, default="open")
     created_at = Column(DateTime, server_default=func.now(), nullable=False, index=True)
     acknowledged_at = Column(DateTime, nullable=True)
