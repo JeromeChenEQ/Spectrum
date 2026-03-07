@@ -5,7 +5,6 @@ import json
 from typing import Dict
 
 from openai import OpenAI
-
 from app.config import settings
 
 SYSTEM_PROMPT = """
@@ -19,7 +18,7 @@ Classify severity carefully for helpdesk triage.
 """.strip()
 
 
-def _simulate_result() -> Dict[str, str]:
+def _simulate_result() -> Dict[str, str | bool]:
     """Fallback result when OpenAI is unavailable in local environment."""
     return {
         "detected_language": "English",
@@ -29,7 +28,7 @@ def _simulate_result() -> Dict[str, str]:
     }
 
 
-def analyze_audio_single_call(audio_bytes: bytes, mime_type: str = "audio/wav") -> Dict[str, str]:
+def analyze_audio_single_call(audio_bytes: bytes, mime_type: str = "audio/wav") -> Dict[str, str | bool]:
     """Analyze audio with one AI request and return normalized JSON fields."""
     if not settings.openai_api_key:
         result = _simulate_result()
@@ -40,9 +39,10 @@ def analyze_audio_single_call(audio_bytes: bytes, mime_type: str = "audio/wav") 
     audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
 
     try:
-        response = client.responses.create(
+        response = client.chat.completions.create(
             model="gpt-4o-audio-preview",
-            input=[
+            response_format={"type": "json_object"},
+            messages=[
                 {
                     "role": "system",
                     "content": [{"type": "text", "text": SYSTEM_PROMPT}],
@@ -61,7 +61,7 @@ def analyze_audio_single_call(audio_bytes: bytes, mime_type: str = "audio/wav") 
                 },
             ],
         )
-        parsed = json.loads(response.output_text)
+        parsed = json.loads(response.object)
 
         return {
             "detected_language": parsed.get("detected_language", "Unknown"),
