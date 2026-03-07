@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { acknowledgeAlert, connectAlertsWebSocket, fetchAlerts } from "./api";
+import { acknowledgeAlert, fetchAlerts } from "./api";
 import "./styles.css";
 
 const classificationPriority = {
@@ -150,37 +150,34 @@ function App() {
 
   const notificationRef = useRef(null);
 
-  useEffect(() => {
-    let socket;
-
-    async function loadData() {
-      try {
-        const initialAlerts = await fetchAlerts();
-        setAlerts(initialAlerts);
-
-        // Optional: preload open alerts into the notification panel
-        setNotifications(initialAlerts.filter((a) => a.status === "open"));
-      } catch (loadError) {
-        setError(loadError.message);
-      } finally {
-        setLoading(false);
-      }
-
-      socket = connectAlertsWebSocket((event) => {
-        if (event.type === "alert_created") {
-          setAlerts((current) => [event.payload, ...current]);
-          setNotifications((prev) => [event.payload, ...prev]);
-        }
-
-        if (event.type === "alert_acknowledged") {
-          updateLocalAlertStatus(event.payload.alert_id);
-        }
-      });
+useEffect(() => {
+  async function loadData() {
+    try {
+      const initialAlerts = await fetchAlerts();
+      setAlerts(initialAlerts);
+      setNotifications(initialAlerts.filter((a) => a.status === "open"));
+    } catch (loadError) {
+      setError(loadError.message);
+    } finally {
+      setLoading(false);
     }
+  }
 
-    loadData();
-    return () => socket?.close();
-  }, []);
+  loadData();
+
+  // Poll every 5 seconds
+  const interval = setInterval(async () => {
+    try {
+      const updatedAlerts = await fetchAlerts();
+      setAlerts(updatedAlerts);
+      setNotifications(updatedAlerts.filter((a) => a.status === "open"));
+    } catch (err) {
+      console.error("Polling error:", err);
+    }
+  }, 5000);
+
+  return () => clearInterval(interval);
+}, []);
 
   useEffect(() => {
     function handleClickOutside(event) {
