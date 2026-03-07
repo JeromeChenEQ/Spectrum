@@ -174,7 +174,7 @@ useEffect(() => {
     } catch (err) {
       console.error("Polling error:", err);
     }
-  }, 5000);
+  }, 3000);
 
   return () => clearInterval(interval);
 }, []);
