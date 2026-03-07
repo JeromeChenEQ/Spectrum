@@ -1,5 +1,3 @@
-USE spectrum_senioraid;
-
 INSERT INTO boxes (resident_name, address, contact_number)
 VALUES
     ('Mdm Tan Ah Lian', 'Blk 101 Ang Mo Kio Ave 3, #09-22', '+65-9000-1001'),

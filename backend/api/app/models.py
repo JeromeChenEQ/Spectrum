@@ -26,14 +26,19 @@ class Alert(Base):
     __tablename__ = "alerts"
 
     alert_id = Column(Integer, primary_key=True, index=True)
-    box_id = Column(Integer, ForeignKey("boxes.box_id"), nullable=False)
+    box_id = Column(Integer, ForeignKey("boxes.box_id"), nullable=False, index=True)
     detected_language = Column(String(40), nullable=False)
     transcript = Column(Text, nullable=False)
     english_translation = Column(Text, nullable=False)
     severity = Column(Enum("EMERGENCY", "URGENT", "ROUTINE", name="severity_enum"), nullable=False)
-    status = Column(Enum("open", "acknowledged", name="alert_status_enum"), nullable=False, default="open")
+    status = Column(
+        Enum("open", "acknowledged", name="alert_status_enum"),
+        nullable=False,
+        default="open",
+        server_default="open",
+    )
     is_simulated_ai = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False, index=True)
     acknowledged_at = Column(DateTime, nullable=True)
 
     box = relationship("Box", back_populates="alerts")

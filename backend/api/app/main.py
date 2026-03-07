@@ -1,19 +1,29 @@
 """FastAPI application bootstrap."""
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import settings
 from app.models import Base
 from app.database import engine
 from app.routers.alerts import alerts_router
 
-Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Spectrum SeniorAid API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Create tables automatically in development only."""
+    if settings.app_env == "development":
+        Base.metadata.create_all(bind=engine)
+    yield
+
+
+app = FastAPI(title="Spectrum SeniorAid API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # TODO: restrict in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

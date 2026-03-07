@@ -1,10 +1,12 @@
 """Alert endpoints for device ingestion and helpdesk operations."""
 
-from datetime import datetime
+import asyncio
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import SessionLocal
 from app.models import Alert, Box
 from app.schemas import AcknowledgeResponse, AlertResponse
@@ -12,6 +14,9 @@ from app.services.openai_audio_service import analyze_audio_single_call
 from app.services.realtime_broadcaster import alert_connection_manager
 
 alerts_router = APIRouter(prefix="/api/v1/alerts", tags=["alerts"])
+
+# ~16 kHz, 16-bit mono WAV estimate per second + generous overhead
+MAX_UPLOAD_BYTES = settings.max_audio_seconds * 16_000 * 2 + 44
 
 
 
@@ -41,8 +46,12 @@ async def create_alert_from_device(
     audio_bytes = await audio_file.read()
     if not audio_bytes:
         raise HTTPException(status_code=400, detail="audio_file is empty")
+    if len(audio_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Audio file exceeds maximum allowed size")
 
-    ai_result = analyze_audio_single_call(audio_bytes, audio_file.content_type or "audio/wav")
+    ai_result = await asyncio.to_thread(
+        analyze_audio_single_call, audio_bytes, audio_file.content_type or "audio/wav"
+    )
     severity = str(ai_result.get("severity", "ROUTINE")).upper()
     if severity not in {"EMERGENCY", "URGENT", "ROUTINE"}:
         severity = "ROUTINE"
@@ -66,9 +75,13 @@ async def create_alert_from_device(
 
 
 @alerts_router.get("", response_model=list[AlertResponse])
-def list_alerts(db: Session = Depends(get_db_session)):
+def list_alerts(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db_session),
+):
     """List all alerts ordered by newest first."""
-    alerts = db.query(Alert).order_by(Alert.created_at.desc()).all()
+    alerts = db.query(Alert).order_by(Alert.created_at.desc()).offset(skip).limit(limit).all()
     return alerts
 
 
@@ -80,7 +93,7 @@ async def acknowledge_alert(alert_id: int, db: Session = Depends(get_db_session)
         raise HTTPException(status_code=404, detail="alert not found")
 
     alert.status = "acknowledged"
-    alert.acknowledged_at = datetime.utcnow()
+    alert.acknowledged_at = datetime.now(timezone.utc)
     db.commit()
 
     await alert_connection_manager.broadcast(
