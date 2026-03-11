@@ -86,6 +86,3 @@ def get_database_url() -> str:
         database_url = urlunparse(parsed._replace(query=urlencode(query_pairs)))
 
     return database_url
-
-
-f
